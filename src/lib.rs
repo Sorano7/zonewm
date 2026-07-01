@@ -4,7 +4,9 @@ mod models;
 mod state;
 mod commands;
 mod overlay;
+#[cfg(debug_assertions)]
 mod debug;
+mod tray;
 mod test_utils;
 
 use std::path::Path;
@@ -33,6 +35,7 @@ use crate::overlay::{
 };
 use crate::state::StateMap;
 use crate::state::window_state::Direction;
+use crate::tray::SystemTray;
 
 fn hot_reload(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<SystemTime>) {
     let new_mtime = config::mtime(cfg_path);
@@ -113,7 +116,7 @@ fn on_hotkey(
     }
 }
 
-fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool) {
+fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool, tray: &SystemTray) {
     let hot_reload_timer = unsafe { SetTimer(NO_HWND, 0, HOT_RELOAD_MS, None) };
     let focus_timer      = unsafe { SetTimer(NO_HWND, 0, FOCUS_POLL_MS, None) };
     let display_timer    = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS, None) };
@@ -131,9 +134,13 @@ fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool) {
                 hooks::tick();
                 flash.try_expire(msg.wParam.0);
 
+                if tray.quit_requested() {
+                    running.store(false, Ordering::SeqCst);
+                }
                 if msg.wParam.0 == hot_reload_timer {
                     hot_reload(states, cfg_path, &mut cfg_mtime);
                 }
+                #[cfg(debug_assertions)]
                 if msg.wParam.0 == display_timer {
                     let focused = unsafe { GetForegroundWindow() };
                     debug::print_status(states, focused);
@@ -167,10 +174,12 @@ fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool) {
 }
 
 pub fn run_wm() {
+    #[cfg(debug_assertions)]
     debug::enable_ansi_console();
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
+        #[cfg(debug_assertions)]
         println!("Exit");
         r.store(false, Ordering::SeqCst);
     }).expect("Error handling Ctrl-C");
@@ -200,7 +209,9 @@ pub fn run_wm() {
     let kbd_hook       = hooks::install_kbd();
     assert!(!kbd_hook.0.is_null(),    "zonewm: failed to install keyboard hook");
 
-    run(&mut states, &cfg_path, &running);
+    let tray = SystemTray::new();
+
+    run(&mut states, &cfg_path, &running, &tray);
 
     let mut persist = config::SavedState::default();
     for ms in states.values() {

@@ -66,6 +66,7 @@ pub fn bring_to_top_no_activate(hwnd: HWND) {
     }
 }
 
+#[cfg(debug_assertions)]
 pub fn title(hwnd: HWND) -> Option<String> {
     unsafe {
         let mut buf = [0u16; 256];

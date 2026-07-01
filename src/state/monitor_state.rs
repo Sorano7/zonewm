@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 
-use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::{WindowRecord, WindowState}, workspace::WORKSPACE_COUNT}};
+use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+#[cfg(debug_assertions)]
+use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
 
 pub struct MonitorState {
@@ -75,6 +77,7 @@ impl MonitorState {
     }
 
     /// All tracked windows across every workspace, with placement metadata for display.
+    #[cfg(debug_assertions)]
     pub fn all_window_records(&self) -> Vec<WindowRecord> {
         let mut records = Vec::new();
         for (ws_idx, ws) in self.workspaces.iter().enumerate() {

@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use windows::Win32::Foundation::HWND;
 
 use crate::models::monitor::Rect;
@@ -12,6 +13,7 @@ pub enum WindowState {
     Ignored,
 }
 
+#[cfg(debug_assertions)]
 pub struct WindowRecord {
     pub hwnd: HWND,
     pub ws_idx: usize,
