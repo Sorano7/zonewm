@@ -37,9 +37,12 @@ impl MonitorState {
         }
     }
 
-    /// Stable string key for this monitor based on its work-area origin.
+    /// Stable string key for this monitor, used for state persistence.
+    /// Backed by the monitor's EDID-derived device identity so it survives
+    /// resolution changes and the monitor being replugged into a different
+    /// port (unlike a work-area-origin or `HMONITOR`-based key).
     pub fn monitor_key(&self) -> String {
-        format!("{},{}", self.monitor.work_area.left, self.monitor.work_area.top)
+        self.monitor.device_id.clone()
     }
 
     /// Layout index active on workspace 1 (used for state persistence).
