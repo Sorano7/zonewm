@@ -362,11 +362,11 @@ impl MonitorState {
         }
     }
 
-    pub fn capture_all_as_floating(&mut self, sys: &impl WindowSystem) {
+    pub fn capture_all_windows(&mut self, sys: &impl WindowSystem) {
         let on_monitor = sys.enumerate_on_monitor(self.monitor.handle);
         let new_floating: Vec<HWND> = on_monitor
             .into_iter()
-            .filter(|&h| !self.workspaces[self.active_ws].contains(h))
+            .filter(|&h| !self.hwnd_ws.contains_key(&(h.0 as isize)))
             .collect();
         for &h in &new_floating {
             let key = h.0 as isize;
@@ -378,7 +378,6 @@ impl MonitorState {
 
     pub fn switch_workspace(&mut self, new_idx: usize, sys: &impl WindowSystem) {
         if new_idx >= WORKSPACE_COUNT || new_idx == self.active_ws { return; }
-        self.capture_all_as_floating(sys);
 
         self.update_last_focused_window();
 
@@ -487,6 +486,24 @@ mod test {
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.detach_window(h(1));
         assert_eq!(ms.window_state(h(1)), WindowState::Ignored);
+    }
+
+    #[test]
+    fn capture_all_windows_tracks_untracked_windows_as_floating() {
+        let mut ms = make_state();
+        let sys = MockSystem { on_monitor: vec![h(1)], ..Default::default() };
+        ms.capture_all_windows(&sys);
+        assert_eq!(ms.window_state(h(1)), WindowState::Floating);
+    }
+
+    #[test]
+    fn capture_all_windows_does_not_redetect_window_on_inactive_workspace() {
+        let mut ms = make_state();
+        let move_sys = MockSystem::default().with_rect(h(1), Rect::default());
+        ms.move_window_to_workspace(h(1), 1, &move_sys);
+        let sys = MockSystem { on_monitor: vec![h(1)], ..Default::default() };
+        ms.capture_all_windows(&sys);
+        assert_eq!(ms.find_workspace(h(1)), Some(1));
     }
 
     #[test]

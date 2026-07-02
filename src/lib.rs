@@ -206,7 +206,7 @@ pub fn run_wm() {
         if let Some(&idx) = saved.monitor_layouts.get(&ms.monitor_key()) {
             ms.switch_layout(idx);
         }
-        ms.capture_all_as_floating(&Win32System);
+        ms.capture_all_windows(&Win32System);
         ms.clear_all_window_borders();
     }
 
@@ -220,6 +220,8 @@ pub fn run_wm() {
     assert!(!minimize_hook.0.is_null(), "zonewm: failed to install WinEvent minimize hook");
     let destroy_hook   = hooks::install_destroy();
     assert!(!destroy_hook.0.is_null(), "zonewm: failed to install WinEvent destroy hook");
+    let show_hook      = hooks::install_show();
+    assert!(!show_hook.0.is_null(),   "zonewm: failed to install WinEvent show hook");
     let kbd_hook       = hooks::install_kbd();
     assert!(!kbd_hook.0.is_null(),    "zonewm: failed to install keyboard hook");
 
@@ -239,5 +241,6 @@ pub fn run_wm() {
     hooks::uninstall(focus_hook);
     hooks::uninstall(minimize_hook);
     hooks::uninstall(destroy_hook);
+    hooks::uninstall(show_hook);
     hooks::uninstall_kbd(kbd_hook);
 }

@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
+use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -9,7 +9,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetCursorPos, KillTimer, PostThreadMessageW, SetTimer,
     SetWindowsHookExW, UnhookWindowsHookEx,
-    EVENT_OBJECT_DESTROY, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
+    EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
     HHOOK, KBDLLHOOKSTRUCT, OBJID_WINDOW, WH_KEYBOARD_LL,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
     WM_HOTKEY, WM_KEYDOWN, WM_SYSKEYDOWN,
@@ -122,6 +122,19 @@ pub fn install_destroy() -> HWINEVENTHOOK {
         SetWinEventHook(
             EVENT_OBJECT_DESTROY,
             EVENT_OBJECT_DESTROY,
+            None,
+            Some(win_event_proc),
+            0, 0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        )
+    }
+}
+
+pub fn install_show() -> HWINEVENTHOOK {
+    unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_SHOW,
+            EVENT_OBJECT_SHOW,
             None,
             Some(win_event_proc),
             0, 0,
@@ -315,6 +328,17 @@ unsafe extern "system" fn win_event_proc(
             if ptr.is_null() { return; }
             for ms in (*ptr).values_mut() {
                 ms.on_window_restored(hwnd, &Win32System);
+            }
+        }
+
+        EVENT_OBJECT_SHOW => {
+            if id_object != OBJID_WINDOW.0 || id_child != 0 { return; }
+
+            let ptr = STATE_PTR.with(|p| p.get());
+            if ptr.is_null() { return; }
+            let mon_key = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST).0 as isize;
+            if let Some(ms) = (*ptr).get_mut(&mon_key) {
+                ms.capture_all_windows(&Win32System);
             }
         }
 

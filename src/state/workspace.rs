@@ -34,10 +34,6 @@ impl Workspace {
             .collect()
     }
 
-    pub fn contains(&self, hwnd: HWND) -> bool {
-        self.zoned.iter().any(|z| z.contains(&hwnd)) || self.floating.contains(&hwnd)
-    }
-
     pub fn remove(&mut self, hwnd: HWND) {
         for zone in &mut self.zoned {
             zone.retain(|&h| h != hwnd);

@@ -1,5 +1,5 @@
 use windows::Win32::Foundation::{COLORREF, HWND};
-use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DwmSetWindowAttribute};
+use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_COLOR_DEFAULT, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
 };
@@ -13,19 +13,23 @@ use crate::models::{
 use crate::state::StateMap;
 use crate::state::window_state::{Direction, WindowState, nearest_in_dir};
 
-pub fn set_window_border(hwnd: HWND, bgr: COLORREF) {
+fn set_dwm_attr<T>(hwnd: HWND, attr: DWMWINDOWATTRIBUTE, value: T) {
     unsafe {
         let _ = DwmSetWindowAttribute(
             hwnd, 
-            DWMWA_BORDER_COLOR, 
-            std::ptr::from_ref(&bgr).cast(), 
-            std::mem::size_of::<u32>() as u32
+            attr, 
+            std::ptr::from_ref(&value).cast(), 
+            std::mem::size_of::<u32>() as u32,
             );
     }
 }
 
+pub fn set_window_border(hwnd: HWND, bgr: COLORREF) {
+    set_dwm_attr(hwnd, DWMWA_BORDER_COLOR, bgr);
+}
+
 pub fn clear_window_border(hwnd: HWND) {
-    set_window_border(hwnd, COLORREF(DWMWA_COLOR_NONE));
+    set_dwm_attr(hwnd, DWMWA_BORDER_COLOR, COLORREF(DWMWA_COLOR_DEFAULT));
 }
 
 pub fn set_foreground_window(hwnd: HWND) {
