@@ -1,4 +1,5 @@
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{COLORREF, HWND};
+use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DwmSetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
 };
@@ -9,9 +10,23 @@ use crate::models::{
     window,
     monitor::Rect,
 };
-use crate::overlay::focus::FocusBorder;
 use crate::state::StateMap;
 use crate::state::window_state::{Direction, WindowState, nearest_in_dir};
+
+pub fn set_window_border(hwnd: HWND, bgr: COLORREF) {
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd, 
+            DWMWA_BORDER_COLOR, 
+            std::ptr::from_ref(&bgr).cast(), 
+            std::mem::size_of::<u32>() as u32
+            );
+    }
+}
+
+pub fn clear_window_border(hwnd: HWND) {
+    set_window_border(hwnd, COLORREF(DWMWA_COLOR_NONE));
+}
 
 pub fn set_foreground_window(hwnd: HWND) {
     unsafe {
@@ -29,7 +44,6 @@ pub fn handle_focus_move(
     mon_key: isize,
     dir: Direction,
     states: &StateMap,
-    focus_border: &mut FocusBorder,
 ) {
     let focused_rect = match window::visible_rect(focused) {
         Some(r) => r,
@@ -47,7 +61,7 @@ pub fn handle_focus_move(
 
     if let Some(target) = nearest_in_dir(&candidates, focused_rect, dir) {
         set_foreground_window(target);
-        focus_border.update(target);
+        clear_window_border(focused);
     }
 }
 
@@ -56,7 +70,6 @@ pub fn handle_window_move(
     mon_key: isize,
     dir: Direction,
     states: &mut StateMap,
-    focus_border: &mut FocusBorder,
 ) {
     let focused_rect = match window::visible_rect(focused) {
         Some(r) => r,
@@ -85,8 +98,6 @@ pub fn handle_window_move(
             dst.move_window_to_zone_idx(focused, dst_zone, &Win32System);
         }
     }
-
-    focus_border.update(focused);
 }
 
 pub fn handle_window_swap(
@@ -150,12 +161,11 @@ pub fn handle_cycle(
     mon_key: isize,
     forward: bool,
     states: &mut StateMap,
-    focus_border: &mut FocusBorder,
 ) {
     if let Some(ms) = states.get_mut(&mon_key) {
         if let Some(target) = ms.cycle_window_in_zone(focused, forward, &Win32System) {
             set_foreground_window(target);
-            focus_border.update(target);
+            clear_window_border(focused);
         }
     }
 }

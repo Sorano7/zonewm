@@ -16,6 +16,7 @@ use std::time::SystemTime;
 
 use models::system::{Win32System};
 
+use windows::Win32::Foundation::{COLORREF, HWND};
 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -25,12 +26,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetTimer, TranslateMessage, MSG, WM_HOTKEY, WM_TIMER,
 };
 
-use crate::models::{
-    window,
-    monitor,
-};
+use crate::commands::window::{clear_window_border, set_window_border};
+use crate::models::monitor;
+
 use crate::overlay::{
-    focus::FocusBorder,
     flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, FOCUS_POLL_MS, DISPLAY_MS, MONITOR_POLL_MS},
 };
 use crate::state::StateMap;
@@ -56,8 +55,7 @@ fn poll_monitors(states: &mut StateMap, cfg_path: &Path, saved: &config::SavedSt
 fn on_hotkey(
     id: i32,
     states: &mut StateMap,
-    flash: &mut FlashOverlay,
-    focus_border: &mut FocusBorder,
+    flash: &mut FlashOverlay
 ) {
     let focused = unsafe { GetForegroundWindow() };
     let mon_key = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) }.0 as isize;
@@ -83,9 +81,6 @@ fn on_hotkey(
             s.switch_workspace(ws_idx, &Win32System);
             if let Some(hwnd) = s.first_visible_window(&Win32System) {
                 commands::window::set_foreground_window(hwnd);
-                focus_border.update(hwnd);
-            } else {
-                focus_border.clear();
             }
         }
     } else if (hooks::MOVE_HOT_BASE..hooks::MOVE_HOT_BASE + hot_count).contains(&id) {
@@ -104,20 +99,20 @@ fn on_hotkey(
         }
     } else if (hooks::FOCUS_HOT_BASE..hooks::FOCUS_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::FOCUS_HOT_BASE) as usize) {
-            commands::window::handle_focus_move(focused, mon_key, dir, states, focus_border);
+            commands::window::handle_focus_move(focused, mon_key, dir, states);
         }
     } else if (hooks::WIN_MOVE_HOT_BASE..hooks::WIN_MOVE_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_MOVE_HOT_BASE) as usize) {
-            commands::window::handle_window_move(focused, mon_key, dir, states, focus_border);
+            commands::window::handle_window_move(focused, mon_key, dir, states);
         }
     } else if (hooks::WIN_SWAP_HOT_BASE..hooks::WIN_SWAP_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_SWAP_HOT_BASE) as usize) {
             commands::window::handle_window_swap(focused, mon_key, dir, states);
         }
     } else if id == hooks::WIN_CYCLE_NEXT_HOT_ID {
-        commands::window::handle_cycle(focused, mon_key, true, states, focus_border);
+        commands::window::handle_cycle(focused, mon_key, true, states);
     } else if id == hooks::WIN_CYCLE_PREV_HOT_ID {
-       commands::window::handle_cycle(focused, mon_key, false, states, focus_border);
+        commands::window::handle_cycle(focused, mon_key, false, states);
     }
 }
 
@@ -132,10 +127,11 @@ fn run(
     let focus_timer       = unsafe { SetTimer(NO_HWND, 0, FOCUS_POLL_MS, None) };
     let display_timer     = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS, None) };
     let monitor_poll_timer = unsafe { SetTimer(NO_HWND, 0, MONITOR_POLL_MS, None) };
+
     let mut cfg_mtime = config::mtime(cfg_path);
     let mut flash = FlashOverlay::new();
-    let mut focus_border = FocusBorder::new();
     let mut msg = MSG::default();
+    let mut prev_focused = HWND::default();
 
     while running.load(Ordering::SeqCst) {
         let ret = unsafe { GetMessageW(&mut msg, NO_HWND, 0, 0) };
@@ -145,6 +141,8 @@ fn run(
             WM_TIMER => {
                 hooks::tick();
                 flash.try_expire(msg.wParam.0);
+
+                let focused = unsafe { GetForegroundWindow() };
 
                 if tray.quit_requested() {
                     running.store(false, Ordering::SeqCst);
@@ -157,21 +155,17 @@ fn run(
                 }
                 #[cfg(debug_assertions)]
                 if msg.wParam.0 == display_timer {
-                    let focused = unsafe { GetForegroundWindow() };
                     debug::print_status(states, focused);
                 }
                 if msg.wParam.0 == focus_timer {
-                    focus_border.reposition();
-                    if let Some(hwnd) = hooks::take_pending_focus() {
-                        if window::is_manageable(hwnd) {
-                            focus_border.update(hwnd);
-                        } else {
-                            focus_border.clear();
-                        }
+                    set_window_border(focused, COLORREF(0x00FFA269));
+                    if prev_focused != focused {
+                        clear_window_border(prev_focused);
+                        prev_focused = focused;
                     }
                 }
             }
-            WM_HOTKEY => on_hotkey(msg.wParam.0 as i32, states, &mut flash, &mut focus_border),
+            WM_HOTKEY => on_hotkey(msg.wParam.0 as i32, states, &mut flash),
             _ => {}
         }
 
@@ -212,6 +206,8 @@ pub fn run_wm() {
         if let Some(&idx) = saved.monitor_layouts.get(&ms.monitor_key()) {
             ms.switch_layout(idx);
         }
+        ms.capture_all_as_floating(&Win32System);
+        ms.clear_all_window_borders();
     }
 
     overlay::register_class();
@@ -232,6 +228,7 @@ pub fn run_wm() {
     let mut persist = config::SavedState::default();
     for ms in states.values() {
         persist.monitor_layouts.insert(ms.monitor_key(), ms.workspace1_layout_idx());
+        ms.clear_all_window_borders();
     }
     config::save_state(&config::state_path(), &persist);
 

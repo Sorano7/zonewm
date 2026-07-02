@@ -1,5 +1,4 @@
 pub mod flash;
-pub mod focus;
 
 use std::cell::RefCell;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -11,21 +10,17 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, RegisterClassExW,
-    SetLayeredWindowAttributes, SetWindowPos, ShowWindow, WNDCLASSEXW,
+    SetLayeredWindowAttributes, ShowWindow, WNDCLASSEXW,
     CS_HREDRAW, CS_VREDRAW, LWA_ALPHA, LWA_COLORKEY, SW_SHOW, WM_PAINT,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
-    SWP_NOACTIVATE, SWP_NOZORDER,
 };
 use windows::core::{w, PCWSTR};
 
 use crate::models::monitor::Rect;
 
 const CLASS:         PCWSTR   = w!("ZoneWM_Overlay");
-const FOCUS_CLASS:   PCWSTR   = w!("ZoneWM_FocusBorder");
 const KEY:           COLORREF = COLORREF(0x00010101);
 const BORDER:        COLORREF = COLORREF(0x00FFFFFF);
-
-pub const FOCUS_BORDER_WIDTH: i32 = 2;
 
 fn accent_colorref() -> COLORREF {
     (|| -> windows::core::Result<COLORREF> {
@@ -54,12 +49,6 @@ thread_local! {
     static DRAW: RefCell<DrawData> = RefCell::new(DrawData::default());
 }
 
-struct FocusDrawData { color: COLORREF }
-
-thread_local! {
-    static FOCUS_DRAW: RefCell<FocusDrawData> = RefCell::new(FocusDrawData { color: COLORREF(0) });
-}
-
 fn hmod() -> HINSTANCE {
     unsafe {
         let m = GetModuleHandleW(PCWSTR(std::ptr::null())).unwrap_or_default();
@@ -77,9 +66,6 @@ pub fn register_class() {
         };
         RegisterClassExW(&WNDCLASSEXW {
             lpfnWndProc: Some(wnd_proc), lpszClassName: CLASS, ..base
-        });
-        RegisterClassExW(&WNDCLASSEXW {
-            lpfnWndProc: Some(focus_wnd_proc), lpszClassName: FOCUS_CLASS, ..base
         });
     }
 }
@@ -139,22 +125,6 @@ pub fn close(hwnd: HWND) {
     unsafe { let _ = DestroyWindow(hwnd); }
 }
 
-pub fn create_focus_border(rect: Rect) -> HWND {
-    FOCUS_DRAW.with(|d| d.borrow_mut().color = COLORREF(0x00FFA269));
-    make_window(FOCUS_CLASS, rect, 255)
-}
-
-pub fn update_focus_border(border: HWND, rect: Rect) {
-    unsafe {
-        let _ = SetWindowPos(
-            border,
-            HWND(std::ptr::null_mut()),
-            rect.left, rect.top, rect.width(), rect.height(),
-            SWP_NOACTIVATE | SWP_NOZORDER,
-        );
-    }
-}
-
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM,
 ) -> LRESULT {
@@ -198,38 +168,3 @@ unsafe extern "system" fn wnd_proc(
     }
     DefWindowProcW(hwnd, msg, wp, lp)
 }
-
-unsafe extern "system" fn focus_wnd_proc(
-    hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM,
-) -> LRESULT {
-    if msg == WM_PAINT {
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-
-        let mut cr = RECT::default();
-        let _ = GetClientRect(hwnd, &mut cr);
-
-        let color  = FOCUS_DRAW.with(|d| d.borrow().color);
-        let acc_br = CreateSolidBrush(color);
-        let key_br = CreateSolidBrush(KEY);
-
-        // Fill the entire frame with accent color, then punch out the center
-        FillRect(hdc, &cr, acc_br);
-        let inner = RECT {
-            left:   FOCUS_BORDER_WIDTH,
-            top:    FOCUS_BORDER_WIDTH,
-            right:  cr.right  - FOCUS_BORDER_WIDTH,
-            bottom: cr.bottom - FOCUS_BORDER_WIDTH,
-        };
-        if inner.right > inner.left && inner.bottom > inner.top {
-            FillRect(hdc, &inner, key_br);
-        }
-
-        let _ = DeleteObject(acc_br);
-        let _ = DeleteObject(key_br);
-        let _ = EndPaint(hwnd, &ps);
-        return LRESULT(0);
-    }
-    DefWindowProcW(hwnd, msg, wp, lp)
-}
-

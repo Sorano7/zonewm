@@ -93,7 +93,7 @@ pub fn nearest_in_dir<T: Copy>(candidates: &[(T, Rect)], from: Rect, dir: Direct
 
 #[cfg(test)]
 mod test {
-    use crate::{config::to_layouts, models::{monitor::Rect, zone::Zone}, state::window_state::{Direction, nearest_in_dir}, test_utils::{h, work_area}};
+    use crate::{config::to_layouts, models::{monitor::Rect, window, zone::Zone}, state::window_state::{Direction, nearest_in_dir}, test_utils::{h, work_area}};
 
     #[test]
     fn nearest_in_dir_works_with_zone_slot_candidates() {
@@ -176,10 +176,10 @@ mod test {
 
     fn visible_rect_for_zone(zone: Rect) -> Rect {
         Rect {
-            left:   zone.left   + crate::window::SNAP_GAP,
-            top:    zone.top    + crate::window::SNAP_GAP,
-            right:  zone.right  - crate::window::SNAP_GAP,
-            bottom: zone.bottom - crate::window::SNAP_GAP,
+            left:   zone.left   + window::SNAP_GAP,
+            top:    zone.top    + window::SNAP_GAP,
+            right:  zone.right  - window::SNAP_GAP,
+            bottom: zone.bottom - window::SNAP_GAP,
         }
     }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 
-use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{self, Layout}}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -414,6 +414,14 @@ impl MonitorState {
         for ws in &self.workspaces {
             for hwnd in ws.all_windows() {
                 sys.set_cloak(hwnd, false);
+            }
+        }
+    }
+
+    pub fn clear_all_window_borders(&self) {
+        for ws in &self.workspaces {
+            for hwnd in ws.all_windows() {
+                clear_window_border(hwnd);
             }
         }
     }

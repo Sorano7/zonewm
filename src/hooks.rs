@@ -72,14 +72,6 @@ impl Drop for StateGuard {
     }
 }
 
-pub fn take_pending_focus() -> Option<HWND> {
-    PENDING_FOCUS.with(|c| c.take())
-}
-
-pub fn is_drag_active() -> bool {
-    DRAG.with(|d| d.borrow().is_some())
-}
-
 pub fn install() -> HWINEVENTHOOK {
     unsafe {
         SetWinEventHook(
