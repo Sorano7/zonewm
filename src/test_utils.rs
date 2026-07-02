@@ -42,7 +42,7 @@ impl WindowSystem for MockSystem {
     fn snap_window(&self, hwnd: HWND, rect: &Rect) {
         self.snapped.borrow_mut().push((hwnd.0 as isize, *rect));
     }
-    fn restore_window(&self, _hwnd: HWND, _rect: &Rect) {}
+    fn restore_window_size(&self, _hwnd: HWND, _rect: &Rect) {}
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {
         self.cloaked.borrow_mut().insert(hwnd.0 as isize, cloaked);
     }

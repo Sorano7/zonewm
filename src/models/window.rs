@@ -97,12 +97,21 @@ pub fn visible_rect(hwnd: HWND) -> Option<Rect> {
     }
 }
 
-pub fn restore_to_rect(hwnd: HWND, rect: &Rect) {
+pub fn restore_size_from_rect(hwnd: HWND, rect: &Rect) {
+    let mut left = rect.left;
+    let mut top = rect.top;
+
     unsafe {
+        let mut r = RECT::default();
+        if GetWindowRect(hwnd, &mut r).is_ok() {
+            left = r.left;
+            top = r.top;
+        }
+
         let _ = SetWindowPos(
             hwnd,
             HWND(std::ptr::null_mut()),
-            rect.left, rect.top,
+            left, top,
             rect.width(), rect.height(),
             SWP_NOZORDER | SWP_NOACTIVATE,
         );

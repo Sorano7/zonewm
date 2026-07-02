@@ -8,7 +8,7 @@ use crate::commands::cloak;
 
 pub trait WindowSystem {
     fn snap_window(&self, hwnd: HWND, rect: &Rect);
-    fn restore_window(&self, hwnd: HWND, rect: &Rect);
+    fn restore_window_size(&self, hwnd: HWND, rect: &Rect);
     fn set_cloak(&self, hwnd: HWND, cloaked: bool);
     fn enumerate_on_monitor(&self, hmon: HMONITOR) -> Vec<HWND>;
     fn is_minimized(&self, hwnd: HWND) -> bool;
@@ -23,8 +23,8 @@ impl WindowSystem for Win32System {
         window::snap_to_rect(hwnd, rect);
     }
 
-    fn restore_window(&self, hwnd: HWND, rect: &Rect) {
-        window::restore_to_rect(hwnd, rect);
+    fn restore_window_size(&self, hwnd: HWND, rect: &Rect) {
+        window::restore_size_from_rect(hwnd, rect);
     }
 
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {
