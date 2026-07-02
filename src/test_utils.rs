@@ -73,42 +73,44 @@ pub fn make_monitor() -> Monitor {
     }
 }
 
-pub fn one_col_layout() -> Vec<Option<Layout>> {
+pub fn make_layouts(layouts: Vec<impl Fn() -> Layout>) -> Vec<Option<Layout>> {
     let mut slots = vec![None; WORKSPACE_COUNT];
-    slots[0] = Some(Layout {
-        name: "1-col".into(),
-        zones: vec![Zone { x: 0.0, y: 0.0, w: 1.0, h: 1.0 }],
-    });
+    assert!(layouts.len() <= WORKSPACE_COUNT, "Too many layouts");
+    for (i, f) in layouts.iter().enumerate() {
+        slots[i] = Some(f());
+    }
     slots
 }
 
-pub fn two_col_layout() -> Vec<Option<Layout>> {
-    let mut slots = vec![None; WORKSPACE_COUNT];
-    slots[0] = Some(Layout {
+pub fn one_col_layout() -> Layout {
+    Layout {
+        name: "1-col".into(),
+        zones: vec![Zone { x: 0.0, y: 0.0, w: 1.0, h: 1.0 }],
+    }
+}
+
+pub fn two_col_layout() -> Layout {
+    Layout {
         name: "2-col".into(),
         zones: vec![
             Zone { x: 0.0, y: 0.0, w: 0.5, h: 1.0 },
             Zone { x: 0.5, y: 0.0, w: 0.5, h: 1.0 },
         ],
-    });
-    slots
+    }
 }
 
-pub fn two_row_layout() -> Vec<Option<Layout>> {
-    let mut slots = vec![None; WORKSPACE_COUNT];
-    slots[0] = Some(Layout {
+pub fn two_row_layout() -> Layout {
+    Layout {
         name: "2-row".into(),
         zones: vec![
             Zone { x: 0.0, y: 0.0, w: 1.0, h: 0.5 },
             Zone { x: 0.0, y: 0.5, w: 1.0, h: 0.5 },
         ],
-    });
-    slots
+    }
 }
 
-pub fn four_zone_layout() -> Vec<Option<Layout>> {
-    let mut slots = vec![None; WORKSPACE_COUNT];
-    slots[0] = Some(Layout {
+pub fn two_by_two_layout() -> Layout {
+    Layout {
         name: "2x2".into(),
         zones: vec![
             Zone { x: 0.0, y: 0.0, w: 0.5, h: 0.5 },
@@ -116,10 +118,11 @@ pub fn four_zone_layout() -> Vec<Option<Layout>> {
             Zone { x: 0.0, y: 0.5, w: 0.5, h: 0.5 },
             Zone { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
         ],
-    });
-    slots
+    }
 }
 
+/// Create a MonitorState with two_col_layout.
 pub fn make_state() -> MonitorState {
-    MonitorState::new(make_monitor(), two_col_layout())
+    let layouts = make_layouts(vec![two_col_layout]);
+    MonitorState::new(make_monitor(), layouts)
 }

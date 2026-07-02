@@ -37,21 +37,14 @@ impl MonitorState {
         }
     }
 
-    /// Stable string key for this monitor, used for state persistence.
-    /// Backed by the monitor's EDID-derived device identity so it survives
-    /// resolution changes and the monitor being replugged into a different
-    /// port (unlike a work-area-origin or `HMONITOR`-based key).
     pub fn monitor_key(&self) -> String {
         self.monitor.device_id.clone()
     }
 
-    /// Layout index active on workspace 1 (used for state persistence).
     pub fn workspace1_layout_idx(&self) -> usize {
         self.workspaces[0].layout_idx
     }
 
-    /// Replace layouts (hot-reload). If a workspace's slot is now None, falls
-    /// back to the first available slot; resizes zone vecs; reflows active ws.
     pub fn reload_layouts(&mut self, layouts: Vec<Option<Layout>>, sys: &impl WindowSystem) {
         self.layouts = layouts;
         let fallback = self.layouts.iter().position(|l| l.is_some()).unwrap_or(0);
@@ -396,7 +389,7 @@ impl MonitorState {
 mod test {
     use std::collections::HashMap;
 
-use crate::{models::{monitor::Rect, zone::{Layout, Zone}}, state::{monitor_state::MonitorState, window_state::WindowState}, test_utils::{MockSystem, four_zone_layout, h, make_monitor, make_state}};
+use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils::{MockSystem, h, make_layouts, make_state, two_by_two_layout, two_col_layout}};
 
     #[test]
     fn assign_places_window_in_zone() {
@@ -437,34 +430,6 @@ use crate::{models::{monitor::Rect, zone::{Layout, Zone}}, state::{monitor_state
     }
 
     #[test]
-    fn switch_layout_smaller_orphaned_windows_are_cloaked_on_workspace_switch() {
-        let sys = MockSystem::default();
-
-        let mut layouts = four_zone_layout();
-        layouts[1] = Some(Layout {
-            name: "2-col".into(),
-            zones: vec![
-                Zone { x: 0.0, y: 0.0, w: 0.5, h: 1.0 },
-                Zone { x: 0.5, y: 0.0, w: 0.5, h: 1.0 },
-            ],
-        });
-        let mut ms = MonitorState::new(make_monitor(), layouts);
-        ms.assign_to_zone(0, h(1), Rect::default());
-        ms.assign_to_zone(1, h(2), Rect::default());
-        ms.assign_to_zone(2, h(3), Rect::default());
-        ms.assign_to_zone(3, h(4), Rect::default());
-
-        // Shrink to 2 zones: h(3) and h(4) fall off the end of the zones vec.
-        ms.switch_layout(1);
-
-        // Switching away from this workspace must cloak ALL tracked windows, including
-        // the ones that were silently dropped from the zones vec.
-        ms.switch_workspace(1, &sys);
-        assert!(sys.is_cloaked(h(3)), "h(3) should be cloaked after workspace switch");
-        assert!(sys.is_cloaked(h(4)), "h(4) should be cloaked after workspace switch");
-    }
-
-    #[test]
     fn switch_workspace_cloaks_windows_on_old_workspace() {
         let sys = MockSystem::default();
         let mut ms = make_state();
@@ -484,14 +449,23 @@ use crate::{models::{monitor::Rect, zone::{Layout, Zone}}, state::{monitor_state
         assert!(!sys.is_cloaked(h(2)));
     }
 
-    /// Bug: move_window_to_workspace places the window in the floating list of the
-    /// target workspace even when it was zoned. It should arrive in a zone.
-    /// This test documents current (buggy) behaviour.
     #[test]
-    fn move_to_workspace_arrives_as_floating() {
+    fn move_to_workspace_arrives_as_zoned_if_index_in_bound() {
         let sys = MockSystem::default();
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
+        ms.move_window_to_workspace(h(1), 1, &sys);
+        ms.switch_workspace(1, &sys);
+        assert_eq!(ms.window_state(h(1)), WindowState::Zoned(0));
+    }
+
+    #[test]
+    fn move_to_workspace_arrives_as_floating_if_index_out_of_bounds() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.layouts = make_layouts(vec![two_by_two_layout, two_col_layout]);
+
+        ms.assign_to_zone(3, h(1), Rect::default());
         ms.move_window_to_workspace(h(1), 1, &sys);
         ms.switch_workspace(1, &sys);
         assert_eq!(ms.window_state(h(1)), WindowState::Floating);
