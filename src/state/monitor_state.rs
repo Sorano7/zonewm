@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::{clear_window_border}, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Zone}}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
+use crate::models::zone::{MAX_POS_DELTA, MAX_SIZE_DELTA, AUTO_SNAP_THRESHOLD};
 
 pub struct MonitorState {
     pub monitor: Monitor,
@@ -362,6 +363,51 @@ impl MonitorState {
         }
     }
 
+    fn auto_snap_score(&self, zone: &Zone, work_area: Rect, r: Rect) -> Option<i32> {
+        let zr = zone.to_rect(work_area);
+
+        let dx = (r.left - zr.left).abs();
+        let dy = (r.top - zr.top).abs();
+        let dw = (r.width() - zr.width()).abs();
+        let dh = (r.height() - zr.height()).abs();
+        let score = dx + dy + dw + dh;
+
+        let within_tolerance = dx <= MAX_POS_DELTA
+            && dy <= MAX_POS_DELTA
+            && dw <= MAX_SIZE_DELTA
+            && dh <= MAX_SIZE_DELTA
+            && score <= AUTO_SNAP_THRESHOLD;
+
+        within_tolerance.then_some(score)
+    }
+
+    fn try_auto_snap(&mut self, hwnd: HWND, sys: &impl WindowSystem) -> bool {
+        let Some(r) = sys.window_rect(hwnd) else {
+            return false;
+        };
+        let layout_idx = self.workspaces[self.active_ws].layout_idx;
+        let Some(layout) = &self.layouts[layout_idx] else {
+            return false;
+        };
+
+        let best_zone = layout
+            .zones
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, zone)| 
+                self.auto_snap_score(zone, self.monitor.work_area, r)
+                    .map(|score| (idx, score))
+            )
+            .min_by_key(|&(_, score)| score);
+
+        let Some((zone_idx, _)) = best_zone else {
+            return false;
+        };
+
+        self.assign_to_zone(zone_idx, hwnd, r);
+        true
+    }
+
     pub fn capture_all_windows(&mut self, sys: &impl WindowSystem) {
         let on_monitor = sys.enumerate_on_monitor(self.monitor.handle);
         let new_floating: Vec<HWND> = on_monitor
@@ -372,8 +418,12 @@ impl MonitorState {
             let key = h.0 as isize;
             self.hwnd_ws.insert(key, self.active_ws);
             self.snap_cache.remove(&key);
+            if !self.try_auto_snap(h, sys) {
+                self.workspaces[self.active_ws].floating.push(h);
+            }
         }
-        self.workspaces[self.active_ws].floating.extend(new_floating);
+
+        self.reflow(sys);
     }
 
     pub fn switch_workspace(&mut self, new_idx: usize, sys: &impl WindowSystem) {

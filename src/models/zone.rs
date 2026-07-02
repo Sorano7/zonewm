@@ -1,5 +1,9 @@
 use crate::models::monitor::Rect;
 
+pub const MAX_POS_DELTA: i32       = 200;
+pub const MAX_SIZE_DELTA: i32      = 200;
+pub const AUTO_SNAP_THRESHOLD: i32 = 200;
+
 /// A zone in normalised coordinates; all fields are fractions of the monitor
 #[derive(Debug, Clone)]
 pub struct Zone {
