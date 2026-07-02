@@ -33,12 +33,7 @@ impl From<RECT> for Rect {
 pub struct Monitor {
     pub handle: HMONITOR,
     pub work_area: Rect,
-    /// GDI adapter name (e.g. `\\.\DISPLAY1`). Reassigned by Windows across
-    /// topology changes, so only useful for matching within one enumeration.
     pub device_name: String,
-    /// EDID-derived hardware identity, stable across replugs/reboots. Falls
-    /// back to `device_name` when no device interface is available (e.g.
-    /// virtual/RDP displays).
     pub device_id: String,
 }
 
@@ -78,9 +73,6 @@ fn wide_to_string(wide: &[u16]) -> String {
     String::from_utf16_lossy(&wide[..end])
 }
 
-/// Looks up the EDID-backed device interface path for the monitor attached
-/// to `adapter_device_name` (e.g. `\\.\DISPLAY1`). This ID stays stable
-/// across the monitor being unplugged/replugged into a different port.
 fn device_id_for(adapter_device_name: &str) -> Option<String> {
     let mut dd = DISPLAY_DEVICEW { cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32, ..Default::default() };
     let ok = unsafe {

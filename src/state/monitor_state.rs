@@ -184,7 +184,7 @@ impl MonitorState {
         if self.detach_from_zone(hwnd) {
             if let Some(rect) = self.pre_snap_rects.get(&key).copied() {
                 if rect.width() > 0 && rect.height() > 0 {
-                    sys.restore_window(hwnd, &rect);
+                    sys.restore_window_size(hwnd, &rect);
                 }
             }
         }

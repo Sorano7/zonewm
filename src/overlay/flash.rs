@@ -6,6 +6,7 @@ pub const FLASH_MS:       u32  = 400;
 pub const HOT_RELOAD_MS:  u32  = 1000;
 pub const FOCUS_POLL_MS:  u32  = 50;
 pub const DISPLAY_MS:     u32  = 500;
+pub const MONITOR_POLL_MS: u32 = 1000;
 pub const NO_HWND:        HWND = HWND(std::ptr::null_mut());
 
 pub struct FlashOverlay {

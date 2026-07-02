@@ -31,7 +31,7 @@ use crate::models::{
 };
 use crate::overlay::{
     focus::FocusBorder,
-    flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, FOCUS_POLL_MS, DISPLAY_MS},
+    flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, FOCUS_POLL_MS, DISPLAY_MS, MONITOR_POLL_MS},
 };
 use crate::state::StateMap;
 use crate::state::window_state::Direction;
@@ -46,6 +46,11 @@ fn hot_reload(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<Sys
             ms.reload_layouts(layouts.clone(), &Win32System);
         }
     }
+}
+
+fn poll_monitors(states: &mut StateMap, cfg_path: &Path, saved: &config::SavedState) {
+    let monitors = monitor::enumerate_monitors();
+    state::reconcile(states, monitors, cfg_path, saved, &Win32System);
 }
 
 fn on_hotkey(
@@ -116,10 +121,17 @@ fn on_hotkey(
     }
 }
 
-fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool, tray: &SystemTray) {
-    let hot_reload_timer = unsafe { SetTimer(NO_HWND, 0, HOT_RELOAD_MS, None) };
-    let focus_timer      = unsafe { SetTimer(NO_HWND, 0, FOCUS_POLL_MS, None) };
-    let display_timer    = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS, None) };
+fn run(
+    states: &mut StateMap,
+    cfg_path: &Path,
+    running: &AtomicBool,
+    tray: &SystemTray,
+    saved: &config::SavedState,
+) {
+    let hot_reload_timer  = unsafe { SetTimer(NO_HWND, 0, HOT_RELOAD_MS, None) };
+    let focus_timer       = unsafe { SetTimer(NO_HWND, 0, FOCUS_POLL_MS, None) };
+    let display_timer     = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS, None) };
+    let monitor_poll_timer = unsafe { SetTimer(NO_HWND, 0, MONITOR_POLL_MS, None) };
     let mut cfg_mtime = config::mtime(cfg_path);
     let mut flash = FlashOverlay::new();
     let mut focus_border = FocusBorder::new();
@@ -139,6 +151,9 @@ fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool, tray: &Syst
                 }
                 if msg.wParam.0 == hot_reload_timer {
                     hot_reload(states, cfg_path, &mut cfg_mtime);
+                }
+                if msg.wParam.0 == monitor_poll_timer {
+                    poll_monitors(states, cfg_path, saved);
                 }
                 #[cfg(debug_assertions)]
                 if msg.wParam.0 == display_timer {
@@ -170,6 +185,7 @@ fn run(states: &mut StateMap, cfg_path: &Path, running: &AtomicBool, tray: &Syst
         let _ = KillTimer(NO_HWND, hot_reload_timer);
         let _ = KillTimer(NO_HWND, focus_timer);
         let _ = KillTimer(NO_HWND, display_timer);
+        let _ = KillTimer(NO_HWND, monitor_poll_timer);
     }
 }
 
@@ -211,7 +227,7 @@ pub fn run_wm() {
 
     let tray = SystemTray::new();
 
-    run(&mut states, &cfg_path, &running, &tray);
+    run(&mut states, &cfg_path, &running, &tray, &saved);
 
     let mut persist = config::SavedState::default();
     for ms in states.values() {
