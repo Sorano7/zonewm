@@ -218,6 +218,8 @@ pub fn run_wm() {
     assert!(!focus_hook.0.is_null(),  "zonewm: failed to install WinEvent focus hook");
     let minimize_hook  = hooks::install_minimize();
     assert!(!minimize_hook.0.is_null(), "zonewm: failed to install WinEvent minimize hook");
+    let destroy_hook   = hooks::install_destroy();
+    assert!(!destroy_hook.0.is_null(), "zonewm: failed to install WinEvent destroy hook");
     let kbd_hook       = hooks::install_kbd();
     assert!(!kbd_hook.0.is_null(),    "zonewm: failed to install keyboard hook");
 
@@ -236,5 +238,6 @@ pub fn run_wm() {
     hooks::uninstall(hook);
     hooks::uninstall(focus_hook);
     hooks::uninstall(minimize_hook);
+    hooks::uninstall(destroy_hook);
     hooks::uninstall_kbd(kbd_hook);
 }

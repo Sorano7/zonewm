@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::{self, clear_window_border}, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::{clear_window_border}, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;

@@ -9,8 +9,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetCursorPos, KillTimer, PostThreadMessageW, SetTimer,
     SetWindowsHookExW, UnhookWindowsHookEx,
-    EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
-    HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
+    EVENT_OBJECT_DESTROY, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
+    HHOOK, KBDLLHOOKSTRUCT, OBJID_WINDOW, WH_KEYBOARD_LL,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
     WM_HOTKEY, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
@@ -109,6 +109,19 @@ pub fn install_minimize() -> HWINEVENTHOOK {
         SetWinEventHook(
             EVENT_SYSTEM_MINIMIZEEND,
             EVENT_SYSTEM_MINIMIZEEND,
+            None,
+            Some(win_event_proc),
+            0, 0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        )
+    }
+}
+
+pub fn install_destroy() -> HWINEVENTHOOK {
+    unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_DESTROY,
+            EVENT_OBJECT_DESTROY,
             None,
             Some(win_event_proc),
             0, 0,
@@ -274,8 +287,8 @@ unsafe extern "system" fn win_event_proc(
     _hook: HWINEVENTHOOK,
     event: u32,
     hwnd: HWND,
-    _id_object: i32,
-    _id_child: i32,
+    id_object: i32,
+    id_child: i32,
     _event_thread: u32,
     _event_time: u32,
 ) {
@@ -302,6 +315,22 @@ unsafe extern "system" fn win_event_proc(
             if ptr.is_null() { return; }
             for ms in (*ptr).values_mut() {
                 ms.on_window_restored(hwnd, &Win32System);
+            }
+        }
+
+        EVENT_OBJECT_DESTROY => {
+            if id_object != OBJID_WINDOW.0 || id_child != 0 { return; }
+
+            let ptr = STATE_PTR.with(|p| p.get());
+            if ptr.is_null() { return; }
+            for ms in (*ptr).values_mut() {
+                let Some(ws_idx) = ms.find_workspace(hwnd) else { continue };
+                let was_zoned = matches!(ms.window_state(hwnd), WindowState::Zoned(_));
+                ms.detach_window(hwnd);
+                if was_zoned && ws_idx == ms.active_ws {
+                    ms.reflow(&Win32System);
+                }
+                break;
             }
         }
 
