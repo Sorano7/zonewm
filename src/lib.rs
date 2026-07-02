@@ -79,7 +79,7 @@ fn on_hotkey(
         let ws_idx = (id - hooks::WORKSPACE_HOT_BASE) as usize;
         if let Some(s) = states.get_mut(&mon_key) {
             s.switch_workspace(ws_idx, &Win32System);
-            if let Some(hwnd) = s.first_visible_window(&Win32System) {
+            if let Some(hwnd) = s.get_last_focused_window(&Win32System) {
                 commands::window::set_foreground_window(hwnd);
             }
         }

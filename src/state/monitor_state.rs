@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::{self, clear_window_border}, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -301,15 +301,31 @@ impl MonitorState {
         }
     }
 
-    /// The first non-minimized window in the active workspace
-    pub fn first_visible_window(&self, sys: &impl WindowSystem) -> Option<HWND> {
+    pub fn update_last_focused_window(&mut self) {
+        let ws = &mut self.workspaces[self.active_ws];
+        let focused = unsafe { GetForegroundWindow() };
+        ws.last_focused.window = Some(focused);
+        ws.last_focused.zone = ws.get_zone_index(focused);
+    }
+    
+    fn first_visible_in_vec(&self, vec: &Vec<HWND>, sys: &impl WindowSystem) -> Option<HWND> {
+        vec.iter().rev().find(|&&h| !sys.is_minimized(h)).copied()
+    }
+
+    pub fn get_last_focused_window(&self, sys: &impl WindowSystem) -> Option<HWND> {
         let ws = &self.workspaces[self.active_ws];
-        for zone in &ws.zoned {
-            if let Some(&h) = zone.iter().rev().find(|&&h| !sys.is_minimized(h)) {
-                return Some(h);
-            }
-        }
-        ws.floating.iter().rev().find(|&&h| !sys.is_minimized(h)).copied()
+
+        let last_focused = ws.last_focused.window.filter(|&h| !sys.is_minimized(h));
+
+        // first visible window in either last focused zone or first zone.
+        let visible_last_zone = ws.last_focused.zone
+            .and_then(|idx| ws.zoned.get(idx))
+            .or_else(|| ws.zoned.first())
+            .and_then(|z| self.first_visible_in_vec(z, sys));
+
+        let visible_floating = self.first_visible_in_vec(&ws.floating, sys);
+
+        last_focused.or(visible_last_zone).or(visible_floating)
     }
 
     pub fn layout_len(&self, layout_idx: usize) -> Option<usize> {
@@ -363,6 +379,8 @@ impl MonitorState {
     pub fn switch_workspace(&mut self, new_idx: usize, sys: &impl WindowSystem) {
         if new_idx >= WORKSPACE_COUNT || new_idx == self.active_ws { return; }
         self.capture_all_as_floating(sys);
+
+        self.update_last_focused_window();
 
         for hwnd in self.workspaces[self.active_ws].all_windows() {
             sys.set_cloak(hwnd, true);
@@ -630,7 +648,7 @@ mod test {
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.assign_to_zone(0, h(2), Rect::default());
-        assert_eq!(ms.first_visible_window(&sys), Some(h(2)));
+        assert_eq!(ms.get_last_focused_window(&sys), Some(h(2)));
     }
 
     #[test]
@@ -639,7 +657,7 @@ mod test {
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.assign_to_zone(0, h(2), Rect::default());
         let sys = MockSystem::default().with_minimized(h(2));
-        assert_eq!(ms.first_visible_window(&sys), Some(h(1)));
+        assert_eq!(ms.get_last_focused_window(&sys), Some(h(1)));
     }
 
     #[test]
@@ -649,7 +667,7 @@ mod test {
         let sys_m = MockSystem::default();
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.set_floating(h(1), &sys_m);
-        assert_eq!(ms.first_visible_window(&sys), Some(h(1)));
+        assert_eq!(ms.get_last_focused_window(&sys), Some(h(1)));
     }
 
     #[test]

@@ -2,6 +2,11 @@ use windows::Win32::Foundation::HWND;
 
 pub const WORKSPACE_COUNT: usize = 9;
 
+#[derive(Default)]
+pub struct LastFocused {
+    pub window: Option<HWND>,
+    pub zone: Option<usize>,
+}
 
 pub struct Workspace {
     pub layout_idx: usize,
@@ -10,11 +15,17 @@ pub struct Workspace {
     pub zoned: Vec<Vec<HWND>>,
     /// Windows that belong to this workspace but aren't snapped to any zone.
     pub floating: Vec<HWND>,
+    pub last_focused: LastFocused,
 }
 
 impl Workspace {
     pub fn new(zone_count: usize) -> Self {
-        Self { layout_idx: 0, zoned: vec![vec![]; zone_count], floating: Vec::new() }
+        Self { 
+            layout_idx: 0, 
+            zoned: vec![vec![]; zone_count], 
+            floating: Vec::new(), 
+            last_focused: LastFocused::default()
+        }
     }
 
     pub fn all_windows(&self) -> Vec<HWND> {
