@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 
-use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::Layout}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{self, Layout}}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -148,13 +148,12 @@ impl MonitorState {
         result
     }
 
-    pub fn assign_to_zone(&mut self, zone_idx: usize, hwnd: HWND, pre_drag_rect: Rect) {
+    pub fn assign_to_zone_ws(&mut self, zone_idx: usize, ws_idx: usize, hwnd: HWND, pre_snap_rect: Rect) {
         let key = hwnd.0 as isize;
-        let ws_idx = self.active_ws;
         if zone_idx >= self.workspaces[ws_idx].zoned.len() { return; }
 
         if !self.workspaces[ws_idx].zoned.iter().any(|z| z.contains(&hwnd)) {
-            self.pre_snap_rects.insert(key, pre_drag_rect);
+            self.pre_snap_rects.insert(key, pre_snap_rect);
         }
 
         {
@@ -169,6 +168,10 @@ impl MonitorState {
         }
         self.hwnd_ws.insert(key, ws_idx);
         self.snap_cache.remove(&key);
+    }
+
+    pub fn assign_to_zone(&mut self, zone_idx: usize, hwnd: HWND, pre_drag_rect: Rect) {
+        self.assign_to_zone_ws(zone_idx, self.active_ws, hwnd, pre_drag_rect);
     }
 
     /// Move a zoned window to floating and restore its pre-snap rect.
@@ -309,9 +312,15 @@ impl MonitorState {
         ws.floating.iter().rev().find(|&&h| !sys.is_minimized(h)).copied()
     }
 
+    pub fn layout_len(&self, layout_idx: usize) -> Option<usize> {
+        self.layouts.get(layout_idx)
+            .and_then(|l| l.as_ref())
+            .map(|l| l.zones.len())
+    }
+
     pub fn switch_layout(&mut self, layout_idx: usize) {
-        let new_len = match self.layouts.get(layout_idx).and_then(|l| l.as_ref()) {
-            Some(l) => l.zones.len(),
+        let new_len = match self.layout_len(layout_idx) {
+            Some(l) => l,
             None => return,
         };
         let ws = &mut self.workspaces[self.active_ws];
@@ -337,23 +346,25 @@ impl MonitorState {
         }
     }
 
-    pub fn switch_workspace(&mut self, new_idx: usize, sys: &impl WindowSystem) {
-        if new_idx >= WORKSPACE_COUNT || new_idx == self.active_ws { return; }
-
-        let cur_ws = self.active_ws;
+    pub fn capture_all_as_floating(&mut self, sys: &impl WindowSystem) {
         let on_monitor = sys.enumerate_on_monitor(self.monitor.handle);
         let new_floating: Vec<HWND> = on_monitor
             .into_iter()
-            .filter(|&h| !self.workspaces[cur_ws].contains(h))
+            .filter(|&h| !self.workspaces[self.active_ws].contains(h))
             .collect();
         for &h in &new_floating {
             let key = h.0 as isize;
-            self.hwnd_ws.insert(key, cur_ws);
+            self.hwnd_ws.insert(key, self.active_ws);
             self.snap_cache.remove(&key);
         }
-        self.workspaces[cur_ws].floating.extend(new_floating);
+        self.workspaces[self.active_ws].floating.extend(new_floating);
+    }
 
-        for hwnd in self.workspaces[cur_ws].all_windows() {
+    pub fn switch_workspace(&mut self, new_idx: usize, sys: &impl WindowSystem) {
+        if new_idx >= WORKSPACE_COUNT || new_idx == self.active_ws { return; }
+        self.capture_all_as_floating(sys);
+
+        for hwnd in self.workspaces[self.active_ws].all_windows() {
             sys.set_cloak(hwnd, true);
         }
 
@@ -366,11 +377,34 @@ impl MonitorState {
         self.reflow(sys);
     }
 
+    pub fn window_is_in_bound(&self, hwnd: HWND, layout_idx: usize) -> bool {
+        self.workspaces[self.active_ws].get_zone_index(hwnd).is_some_and(|idx| {
+            let new_len = self.layout_len(layout_idx).unwrap_or(0);
+            idx < new_len
+        })
+    }
+
     pub fn move_window_to_workspace(&mut self, hwnd: HWND, target_ws: usize, sys: &impl WindowSystem) {
         if target_ws >= WORKSPACE_COUNT || target_ws == self.active_ws { return; }
         let key = hwnd.0 as isize;
+        let layout_idx = self.workspaces[target_ws].layout_idx;
+        let rect = match self.pre_snap_rects.get(&key).copied() {
+            Some(r) => r,
+            None => sys.window_rect(hwnd).expect("Failed to get window rect"),
+        };
+
+        if self.window_is_in_bound(hwnd, layout_idx) {
+            let zone_idx = self.workspaces[self.active_ws].get_zone_index(hwnd)
+                .expect("Window removed before zone index is retrieved");
+            self.assign_to_zone_ws(zone_idx, target_ws, hwnd, rect);
+        } else {
+            self.workspaces[target_ws].floating.push(hwnd);
+            if rect.width() > 0 && rect.height() > 0 {
+                sys.restore_window_size(hwnd, &rect);
+            }
+        }
+
         self.workspaces[self.active_ws].remove(hwnd);
-        self.workspaces[target_ws].floating.push(hwnd);
         self.hwnd_ws.insert(key, target_ws);
         self.snap_cache.remove(&key);
         sys.set_cloak(hwnd, true);
@@ -389,7 +423,7 @@ impl MonitorState {
 mod test {
     use std::collections::HashMap;
 
-use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils::{MockSystem, h, make_layouts, make_state, two_by_two_layout, two_col_layout}};
+    use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils::{MockSystem, h, make_layouts, make_state, two_by_two_layout, two_col_layout}};
 
     #[test]
     fn assign_places_window_in_zone() {
@@ -440,7 +474,7 @@ use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils:
 
     #[test]
     fn switch_workspace_uncloaks_windows_on_new_workspace() {
-        let sys = MockSystem::default();
+        let sys = MockSystem::default().with_rect(h(2), Rect::default());
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
 
@@ -451,7 +485,7 @@ use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils:
 
     #[test]
     fn move_to_workspace_arrives_as_zoned_if_index_in_bound() {
-        let sys = MockSystem::default();
+        let sys = MockSystem::default().with_rect(h(1), Rect::default());
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.move_window_to_workspace(h(1), 1, &sys);
@@ -461,7 +495,7 @@ use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils:
 
     #[test]
     fn move_to_workspace_arrives_as_floating_if_index_out_of_bounds() {
-        let sys = MockSystem::default();
+        let sys = MockSystem::default().with_rect(h(1), Rect::default());
         let mut ms = make_state();
         ms.layouts = make_layouts(vec![two_by_two_layout, two_col_layout]);
 

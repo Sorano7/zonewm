@@ -33,4 +33,8 @@ impl Workspace {
         }
         self.floating.retain(|&h| h != hwnd);
     }
+
+    pub fn get_zone_index(&self, hwnd: HWND) -> Option<usize> {
+        self.zoned.iter().position(|z| z.contains(&hwnd))
+    }
 }
