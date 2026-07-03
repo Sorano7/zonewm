@@ -30,9 +30,9 @@ use crate::commands::window::{clear_window_border, set_window_border};
 use crate::models::monitor;
 
 use crate::overlay::{
-    flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, FOCUS_POLL_MS, DISPLAY_MS, MONITOR_POLL_MS},
+    flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, STYLE_POLL_MS, DISPLAY_MS, MONITOR_POLL_MS},
 };
-use crate::state::StateMap;
+use crate::state::{StateMap, set_all_window_styles};
 use crate::state::window_state::Direction;
 use crate::tray::SystemTray;
 
@@ -135,9 +135,9 @@ fn run(
     tray: &SystemTray,
     saved: &config::SavedState,
 ) {
-    let hot_reload_timer  = unsafe { SetTimer(NO_HWND, 0, HOT_RELOAD_MS, None) };
-    let focus_timer       = unsafe { SetTimer(NO_HWND, 0, FOCUS_POLL_MS, None) };
-    let display_timer     = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS, None) };
+    let hot_reload_timer   = unsafe { SetTimer(NO_HWND, 0, HOT_RELOAD_MS,   None) };
+    let style_timer        = unsafe { SetTimer(NO_HWND, 0, STYLE_POLL_MS,   None) };
+    let display_timer      = unsafe { SetTimer(NO_HWND, 0, DISPLAY_MS,      None) };
     let monitor_poll_timer = unsafe { SetTimer(NO_HWND, 0, MONITOR_POLL_MS, None) };
 
     let mut cfg_mtime = config::mtime(cfg_path);
@@ -169,12 +169,11 @@ fn run(
                 if msg.wParam.0 == display_timer {
                     debug::print_status(states, focused);
                 }
-                if msg.wParam.0 == focus_timer {
-                    set_window_border(focused, COLORREF(0x00FFA269));
-                    if prev_focused != focused {
-                        clear_window_border(prev_focused);
-                        prev_focused = focused;
+                if msg.wParam.0 == style_timer {
+                    if let Some(new_focused) = set_all_window_styles(states, prev_focused) {
+                        prev_focused = new_focused;
                     }
+
                 }
             }
             WM_HOTKEY => on_hotkey(msg.wParam.0 as i32, states, &mut flash),
@@ -189,7 +188,7 @@ fn run(
 
     unsafe {
         let _ = KillTimer(NO_HWND, hot_reload_timer);
-        let _ = KillTimer(NO_HWND, focus_timer);
+        let _ = KillTimer(NO_HWND, style_timer);
         let _ = KillTimer(NO_HWND, display_timer);
         let _ = KillTimer(NO_HWND, monitor_poll_timer);
     }
@@ -219,7 +218,7 @@ pub fn run_wm() {
             ms.switch_layout(idx);
         }
         ms.capture_all_windows(&Win32System);
-        ms.clear_all_window_borders();
+        ms.clear_all_window_style();
     }
 
     overlay::register_class();
@@ -244,7 +243,7 @@ pub fn run_wm() {
     let mut persist = config::SavedState::default();
     for ms in states.values() {
         persist.monitor_layouts.insert(ms.monitor_key(), ms.workspace1_layout_idx());
-        ms.clear_all_window_borders();
+        ms.clear_all_window_style();
     }
     config::save_state(&config::state_path(), &persist);
 

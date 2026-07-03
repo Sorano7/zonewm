@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use windows::Win32::{Foundation::{COLORREF, HWND}, Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow}, UI::WindowsAndMessaging::GetForegroundWindow};
+
 use crate::{
-    config,
-    models::{monitor::Monitor, system::WindowSystem, zone::Layout},
-    state::monitor_state::MonitorState,
+    commands::window::{clear_window_border, set_window_border}, config, models::{monitor::Monitor, system::WindowSystem, zone::Layout}, state::monitor_state::MonitorState,
 };
 
 pub mod window_state;
@@ -59,3 +59,25 @@ pub fn reconcile(
     }
 }
 
+pub fn set_all_window_styles(states: &mut StateMap, prev_focused: HWND) -> Option<HWND> {
+    let focused = unsafe { GetForegroundWindow() };
+    let mon_key = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) }.0 as isize;
+
+    let Some(ms) = states.get(&mon_key) else {
+        return None;
+    };
+
+    let bgr = match () {
+        _ if ms.is_floating(focused)  => COLORREF(0x67B051),
+        _ if ms.is_stretched(focused) => COLORREF(0x58C5ED),
+        _                             => COLORREF(0x00FFA269),
+    };
+    set_window_border(focused, bgr);
+
+    if prev_focused != focused {
+        clear_window_border(prev_focused);
+        Some(prev_focused)
+    } else {
+        None
+    }
+}

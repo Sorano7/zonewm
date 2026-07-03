@@ -6,10 +6,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
 
 use crate::models::system::{Win32System, WindowSystem};
-use crate::models::{
-    window,
-    monitor::Rect,
-};
+use crate::models::monitor::Rect;
 use crate::state::StateMap;
 use crate::state::window_state::{Direction, WindowState, nearest_in_dir};
 

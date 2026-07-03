@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
+use windows::Win32::{Foundation::{COLORREF, HWND}, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::{clear_window_border, set_window_border}, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -533,7 +533,7 @@ impl MonitorState {
         }
     }
 
-    pub fn clear_all_window_borders(&self) {
+    pub fn clear_all_window_style(&self) {
         for ws in &self.workspaces {
             for hwnd in ws.all_windows() {
                 clear_window_border(hwnd);
@@ -554,6 +554,14 @@ impl MonitorState {
 
         zone.map(|z| z.to_rect(self.monitor.work_area))
             .or_else(|| models::window::visible_rect(hwnd))
+    }
+
+    pub fn is_floating(&self, hwnd: HWND) -> bool {
+        self.workspaces.iter().any(|ws| ws.floating.contains(&hwnd))
+    }
+
+    pub fn is_stretched(&self, hwnd: HWND) -> bool {
+        self.visual_span.keys().any(|&k| k == hwnd.0 as isize)
     }
 }
 
