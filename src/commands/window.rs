@@ -49,9 +49,9 @@ pub fn handle_focus_move(
     dir: Direction,
     states: &StateMap,
 ) {
-    let focused_rect = match window::visible_rect(focused) {
-        Some(r) => r,
-        None => return,
+    let Some(focused_rect) = states.get(&mon_key)
+        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        return;
     };
 
     let candidates: Vec<(HWND, Rect)> = states.iter()
@@ -75,9 +75,9 @@ pub fn handle_window_move(
     dir: Direction,
     states: &mut StateMap,
 ) {
-    let focused_rect = match window::visible_rect(focused) {
-        Some(r) => r,
-        None => return,
+    let Some(focused_rect) = states.get(&mon_key)
+        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        return;
     };
 
     let zone_entries: Vec<((isize, usize), Rect)> = states.iter()
@@ -115,9 +115,9 @@ pub fn handle_window_swap(
         .unwrap_or(WindowState::Ignored);
     let WindowState::Zoned(src_zone) = src_state else { return };
 
-    let focused_rect = match window::visible_rect(focused) {
-        Some(r) => r,
-        None => return,
+    let Some(focused_rect) = states.get(&mon_key)
+        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        return;
     };
 
     let zone_entries: Vec<((isize, usize), Rect)> = states.iter()

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -539,6 +539,21 @@ impl MonitorState {
                 clear_window_border(hwnd);
             }
         }
+    }
+
+    pub fn get_zone_or_visible_rect(&self, hwnd: HWND) -> Option<Rect> {
+        let ws = &self.workspaces[self.active_ws];
+
+        let zone = ws.zoned.iter().position(|z| z.contains(&hwnd))
+            .and_then(|zi| {
+                self.layouts.get(ws.layout_idx)?
+                    .as_ref()?
+                    .zones
+                    .get(zi)
+            });
+
+        zone.map(|z| z.to_rect(self.monitor.work_area))
+            .or_else(|| models::window::visible_rect(hwnd))
     }
 }
 
