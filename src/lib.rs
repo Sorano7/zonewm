@@ -1,5 +1,5 @@
 mod config;
-mod hooks;
+mod actions;
 mod models;
 mod state;
 mod commands;
@@ -16,7 +16,7 @@ use std::time::SystemTime;
 
 use models::system::{Win32System};
 
-use windows::Win32::Foundation::{COLORREF, HWND};
+use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -26,7 +26,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetTimer, TranslateMessage, MSG, WM_HOTKEY, WM_TIMER,
 };
 
-use crate::commands::window::{clear_window_border, set_window_border};
 use crate::models::monitor;
 
 use crate::overlay::{
@@ -35,6 +34,7 @@ use crate::overlay::{
 use crate::state::{StateMap, set_all_window_styles};
 use crate::state::window_state::Direction;
 use crate::tray::SystemTray;
+use crate::actions::{Action, ActionCtx, hooks};
 
 fn hot_reload(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<SystemTime>) {
     let new_mtime = config::mtime(cfg_path);
@@ -61,70 +61,58 @@ fn on_hotkey(
     let mon_key = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) }.0 as isize;
     let hot_count = state::workspace::WORKSPACE_COUNT as i32;
 
+    let mut ctx = ActionCtx {
+        states: states, mon_key: mon_key, focused: focused, flash: flash,
+    };
+
     if (hooks::LAYOUT_HOT_BASE..hooks::LAYOUT_HOT_BASE + hot_count).contains(&id) {
         let layout_idx = (id - hooks::LAYOUT_HOT_BASE) as usize;
-        if let Some(s) = states.get_mut(&mon_key) {
-            s.switch_layout(layout_idx);
-            s.reflow(&Win32System);
-            if let Some(layout) = s.active_layout() {
-                let zones = layout.zones.iter()
-                    .map(|z| z.to_rect(s.monitor.work_area))
-                    .collect();
-                flash.show(s.monitor.work_area, zones);
-            } else {
-                flash.cancel();
-            }
-        }
+        Action::SetLayout(layout_idx).execute(&mut ctx);
+
     } else if (hooks::WORKSPACE_HOT_BASE..hooks::WORKSPACE_HOT_BASE + hot_count).contains(&id) {
         let ws_idx = (id - hooks::WORKSPACE_HOT_BASE) as usize;
-        if let Some(s) = states.get_mut(&mon_key) {
-            s.switch_workspace(ws_idx, &Win32System);
-            if let Some(hwnd) = s.get_last_focused_window(&Win32System) {
-                commands::window::set_foreground_window(hwnd);
-            }
-        }
+        Action::SetWorkspace(ws_idx).execute(&mut ctx);
+
     } else if (hooks::MOVE_HOT_BASE..hooks::MOVE_HOT_BASE + hot_count).contains(&id) {
         let ws_idx = (id - hooks::MOVE_HOT_BASE) as usize;
-        if let Some(s) = states.get_mut(&mon_key) {
-            s.move_window_to_workspace(focused, ws_idx, &Win32System);
-            s.switch_workspace(ws_idx, &Win32System);
-        }
+        Action::WinMoveWS(ws_idx).execute(&mut ctx);
+
     } else if id == hooks::FLOAT_HOT_ID {
-        if let Some(s) = states.get_mut(&mon_key) {
-            s.set_floating(focused, &Win32System);
-        }
+        Action::SetFloat.execute(&mut ctx);
+
     } else if id == hooks::MONITOR_LOCK_HOT_ID {
-        for (_, s) in states.iter_mut() {
-            s.monitor_locked = !s.monitor_locked;
-        }
+        Action::ToggleMonLock.execute(&mut ctx);
+
     } else if (hooks::FOCUS_HOT_BASE..hooks::FOCUS_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::FOCUS_HOT_BASE) as usize) {
-            commands::window::handle_focus_move(focused, mon_key, dir, states);
+            Action::WinFocus(dir).execute(&mut ctx);
         }
+
     } else if (hooks::WIN_MOVE_HOT_BASE..hooks::WIN_MOVE_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_MOVE_HOT_BASE) as usize) {
-            commands::window::handle_window_move(focused, mon_key, dir, states);
+            Action::WinMove(dir).execute(&mut ctx);
         }
+
     } else if (hooks::WIN_SWAP_HOT_BASE..hooks::WIN_SWAP_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_SWAP_HOT_BASE) as usize) {
-            commands::window::handle_window_swap(focused, mon_key, dir, states);
+            Action::WinSwap(dir).execute(&mut ctx);
         }
+
     } else if (hooks::WIN_STRETCH_HOT_BASE..hooks::WIN_STRETCH_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_STRETCH_HOT_BASE) as usize) {
-            if let Some(s) = states.get_mut(&mon_key) {
-                s.stretch_window(focused, dir, &Win32System);
-            }
+            Action::WinStretch(dir).execute(&mut ctx);
         }
+
     } else if (hooks::WIN_SHRINK_HOT_BASE..hooks::WIN_SHRINK_HOT_BASE + 4).contains(&id) {
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_SHRINK_HOT_BASE) as usize) {
-            if let Some(s) = states.get_mut(&mon_key) {
-                s.shrink_window(focused, dir, &Win32System);
-            }
+            Action::WinShrink(dir).execute(&mut ctx);
         }
+
     } else if id == hooks::WIN_CYCLE_NEXT_HOT_ID {
-        commands::window::handle_cycle(focused, mon_key, true, states);
+        Action::WinCycle(true).execute(&mut ctx);
+
     } else if id == hooks::WIN_CYCLE_PREV_HOT_ID {
-        commands::window::handle_cycle(focused, mon_key, false, states);
+        Action::WinCycle(false).execute(&mut ctx);
     }
 }
 
