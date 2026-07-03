@@ -31,9 +31,10 @@ impl MonitorState {
             (0..WORKSPACE_COUNT).map(|_| Workspace::new(zone_count)).collect();
         for ws in &mut workspaces { ws.layout_idx = initial_idx; }
         Self {
-            monitor, layouts, workspaces, active_ws: 0, monitor_locked: true,
-            hwnd_ws: HashMap::new(),
-            snap_cache: HashMap::new(),
+            monitor, layouts, workspaces, active_ws: 0, 
+            monitor_locked: false,
+            hwnd_ws:        HashMap::new(),
+            snap_cache:     HashMap::new(),
             pre_snap_rects: HashMap::new(),
         }
     }

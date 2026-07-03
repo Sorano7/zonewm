@@ -94,7 +94,7 @@ fn on_hotkey(
             s.set_floating(focused, &Win32System);
         }
     } else if id == hooks::MONITOR_LOCK_HOT_ID {
-        if let Some(s) = states.get_mut(&mon_key) {
+        for (_, s) in states.iter_mut() {
             s.monitor_locked = !s.monitor_locked;
         }
     } else if (hooks::FOCUS_HOT_BASE..hooks::FOCUS_HOT_BASE + 4).contains(&id) {

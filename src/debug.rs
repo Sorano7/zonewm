@@ -23,6 +23,11 @@ pub fn print_status(states: &StateMap, focused: HWND) {
     let mut monitors: Vec<&MonitorState> = states.values().collect();
     monitors.sort_by_key(|ms| (ms.monitor.work_area.left, ms.monitor.work_area.top));
 
+    for (mon_idx, ms) in monitors.iter().enumerate() {
+        println!("  Mon {}: {}", mon_idx, if ms.monitor_locked {"locked"} else {"unlocked"});
+    }
+    println!("  {}", "-".repeat(72));
+
     println!("  {:<4} {:<4} {:<6} {:<3} {:<8} {}", "Mon", "WS", "Zone", "Z", "State", "Title");
     println!("  {}", "-".repeat(72));
 
