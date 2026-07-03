@@ -31,13 +31,22 @@ pub enum Direction {
 }
 
 impl Direction {
-    pub fn from_idx(idx: usize) -> Option<Self> {
-        match idx {
-            0 => Some(Direction::Left),
-            1 => Some(Direction::Down),
-            2 => Some(Direction::Up),
-            3 => Some(Direction::Right),
-            _ => None,
+    pub fn to_string(&self) -> String {
+        match self {
+            Direction::Left  => "left".into(),
+            Direction::Right => "right".into(),
+            Direction::Up    => "up".into(),
+            Direction::Down  => "down".into(),
+        }
+    }
+
+    pub fn from_string(s: &str) -> Option<Self> {
+        match s {
+            "left"  => Some(Direction::Left),
+            "right" => Some(Direction::Right),
+            "up"    => Some(Direction::Up),
+            "down"  => Some(Direction::Down),
+            _       => None,
         }
     }
 
@@ -105,7 +114,7 @@ pub fn nearest_in_dir<T: Copy>(candidates: &[(T, Rect)], from: Rect, dir: Direct
 
 #[cfg(test)]
 mod test {
-    use crate::{config::to_layouts, models::{monitor::Rect, window, zone::Zone}, state::window_state::{Direction, nearest_in_dir}, test_utils::{h, work_area}};
+    use crate::{config::layout::to_layouts, models::{monitor::Rect, window, zone::Zone}, state::window_state::{Direction, nearest_in_dir}, test_utils::{h, work_area}};
 
     #[test]
     fn nearest_in_dir_works_with_zone_slot_candidates() {

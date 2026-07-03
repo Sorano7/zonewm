@@ -1,10 +1,11 @@
 use std::cell::{Cell, RefCell};
+use std::sync::OnceLock;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT,
+    GetKeyState, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetCursorPos, KillTimer, PostThreadMessageW, SetTimer,
@@ -15,6 +16,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_HOTKEY, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 
+use crate::actions::keymap::{Keymap, KeymapRegistry};
 use crate::models::{
     monitor::Rect,
     window,
@@ -25,21 +27,6 @@ use crate::state::{StateMap, window_state::WindowState};
 
 const EVENT_SYSTEM_FOREGROUND:   u32 = 0x0003;
 const EVENT_SYSTEM_MINIMIZEEND:  u32 = 0x0017;
-
-/// WM_HOTKEY id bases for layout / workspace / window-to-workspace switching.
-pub const LAYOUT_HOT_BASE:       i32 = 1;
-pub const WORKSPACE_HOT_BASE:    i32 = 11;
-pub const MOVE_HOT_BASE:         i32 = 21;
-/// Hotkey IDs for window and focus navigation actions.
-pub const FLOAT_HOT_ID:          i32 = 31;
-pub const MONITOR_LOCK_HOT_ID:   i32 = 32;
-pub const FOCUS_HOT_BASE:        i32 = 33; // +0..3 → Left/Down/Up/Right (hjkl)
-pub const WIN_MOVE_HOT_BASE:     i32 = 37; // +0..3
-pub const WIN_SWAP_HOT_BASE:     i32 = 41; // +0..3
-pub const WIN_CYCLE_NEXT_HOT_ID: i32 = 45;
-pub const WIN_CYCLE_PREV_HOT_ID: i32 = 46;
-pub const WIN_STRETCH_HOT_BASE:  i32 = 47; // +0..3 → Left/Down/Up/Right (uiop)
-pub const WIN_SHRINK_HOT_BASE:   i32 = 51; // +0..3
 
 const TIMER_ID: usize = 1;
 
@@ -53,10 +40,11 @@ struct DragState {
 }
 
 thread_local! {
-    static STATE_PTR:     Cell<*mut StateMap>        = const { Cell::new(std::ptr::null_mut()) };
-    static DRAG:          RefCell<Option<DragState>> = const { RefCell::new(None) };
-    static MAIN_TID:      Cell<u32>                  = const { Cell::new(0) };
-    static PENDING_FOCUS: Cell<Option<HWND>>         = const { Cell::new(None) };
+    static STATE_PTR:      Cell<*mut StateMap>        = const { Cell::new(std::ptr::null_mut()) };
+    static DRAG:           RefCell<Option<DragState>> = const { RefCell::new(None) };
+    static MAIN_TID:       Cell<u32>                  = const { Cell::new(0) };
+    static PENDING_FOCUS:  Cell<Option<HWND>>         = const { Cell::new(None) };
+    pub static KEYMAP_REG: OnceLock<KeymapRegistry>   = const { OnceLock::new() };
 }
 
 pub struct StateGuard;
@@ -159,26 +147,6 @@ pub fn uninstall_kbd(hook: HHOOK) {
     }
 }
 
-fn hjkl_dir(vk: u32) -> Option<usize> {
-    match vk {
-        0x48 => Some(0), // H → Left
-        0x4A => Some(1), // J → Down
-        0x4B => Some(2), // K → Up
-        0x4C => Some(3), // L → Right
-        _ => None,
-    }
-}
-
-fn uiop_dir(vk: u32) -> Option<usize> {
-    match vk {
-        0x55 => Some(0), // U → Left
-        0x49 => Some(1), // I → Down
-        0x4F => Some(2), // O → Up
-        0x50 => Some(3), // P → Right
-        _ => None,
-    }
-}
-
 fn post_hotkey(id: i32) {
     let tid = MAIN_TID.with(|t| t.get());
     unsafe { let _ = PostThreadMessageW(tid, WM_HOTKEY, WPARAM(id as usize), LPARAM(0)); }
@@ -186,78 +154,23 @@ fn post_hotkey(id: i32) {
 
 unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code >= 0 && (wp.0 == WM_KEYDOWN as usize || wp.0 == WM_SYSKEYDOWN as usize) {
-        let info = &*(lp.0 as *const KBDLLHOOKSTRUCT);
-        let vk    = info.vkCode;
         let ctrl  = GetKeyState(VK_CONTROL.0 as i32) < 0;
         let shift = GetKeyState(VK_SHIFT.0 as i32)   < 0;
         let alt   = GetKeyState(VK_MENU.0 as i32)    < 0;
+        let win   = GetKeyState(VK_LWIN.0 as i32)    < 0;
 
-        // layout, workspace, move-to-ws
-        if (0x31..=0x39).contains(&vk) {
-            let digit = (vk - 0x30) as i32;
-            let id = if ctrl && !shift && alt {
-                Some(LAYOUT_HOT_BASE    + (digit - 1))
-            } else if alt && !ctrl && !shift {
-                Some(WORKSPACE_HOT_BASE + (digit - 1))
-            } else if !ctrl && alt && shift {
-                Some(MOVE_HOT_BASE      + (digit - 1))
-            } else {
-                None
-            };
-            if let Some(id) = id {
-                post_hotkey(id);
-                return LRESULT(1);
-            }
-        }
+        let mut mods = 0u32;
+        if ctrl  { mods |= MOD_CONTROL.0; }
+        if alt   { mods |= MOD_ALT.0; }
+        if shift { mods |= MOD_SHIFT.0; }
+        if win   { mods |= MOD_WIN.0; }
 
-        // float the focused zoned window
-        if vk == 0x46 && alt && shift && !ctrl {
-            post_hotkey(FLOAT_HOT_ID);
-            return LRESULT(1);
-        }
+        let info = &*(lp.0 as *const KBDLLHOOKSTRUCT);
 
-        // toggle monitor lock
-        if vk == 0x47 && alt && !shift && !ctrl {
-            post_hotkey(MONITOR_LOCK_HOT_ID);
-            return LRESULT(1);
-        }
-
-        // HJKL navigation family
-        if let Some(dir) = hjkl_dir(vk) {
-            let id = if alt && !ctrl && !shift {
-                Some(FOCUS_HOT_BASE    + dir as i32)
-            } else if alt && shift && !ctrl {
-                Some(WIN_MOVE_HOT_BASE + dir as i32)
-            } else if ctrl && alt && !shift {
-                Some(WIN_SWAP_HOT_BASE + dir as i32)
-            } else {
-                None
-            };
-            if let Some(id) = id {
-                post_hotkey(id);
-                return LRESULT(1);
-            }
-        }
-
-        // UIOP stretch/shrink family
-        if let Some(dir) = uiop_dir(vk) {
-            let id = if alt && shift && !ctrl {
-                Some(WIN_STRETCH_HOT_BASE + dir as i32)
-            } else if ctrl && alt && !shift {
-                Some(WIN_SHRINK_HOT_BASE + dir as i32)
-            } else {
-                None
-            };
-            if let Some(id) = id {
-                post_hotkey(id);
-                return LRESULT(1);
-            }
-        }
-
-        // cycle within zone
-        if alt && !ctrl && !shift {
-            if vk == 0x4E { post_hotkey(WIN_CYCLE_NEXT_HOT_ID); return LRESULT(1); }
-            if vk == 0x50 { post_hotkey(WIN_CYCLE_PREV_HOT_ID); return LRESULT(1); }
+        if let Some(id) = KEYMAP_REG.with(|r| {
+            r.get()?.get_id_from_keymap(Keymap { mods: mods, vk: info.vkCode })
+        }) {
+            post_hotkey(id);
         }
     }
     CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp)

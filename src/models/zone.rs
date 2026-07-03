@@ -133,6 +133,7 @@ impl ZoneNode {
 
 #[derive(Debug, Clone)]
 pub struct Layout {
+    #[allow(unused)]
     pub name: String,
     pub zones: Vec<Zone>,
     pub tree: ZoneNode,
