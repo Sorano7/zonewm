@@ -2,6 +2,7 @@
 use windows::Win32::Foundation::HWND;
 
 use crate::models::monitor::Rect;
+use crate::models::zone::Axis;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WindowState {
@@ -37,6 +38,17 @@ impl Direction {
             2 => Some(Direction::Up),
             3 => Some(Direction::Right),
             _ => None,
+        }
+    }
+
+    /// The zone-tree axis this direction travels along, and whether it
+    /// travels forward (toward later children) or backward along it.
+    pub fn axis(self) -> (Axis, bool) {
+        match self {
+            Direction::Left  => (Axis::Horizontal, false),
+            Direction::Right => (Axis::Horizontal, true),
+            Direction::Up    => (Axis::Vertical, false),
+            Direction::Down  => (Axis::Vertical, true),
         }
     }
 }

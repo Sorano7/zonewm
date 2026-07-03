@@ -109,6 +109,18 @@ fn on_hotkey(
         if let Some(dir) = Direction::from_idx((id - hooks::WIN_SWAP_HOT_BASE) as usize) {
             commands::window::handle_window_swap(focused, mon_key, dir, states);
         }
+    } else if (hooks::WIN_STRETCH_HOT_BASE..hooks::WIN_STRETCH_HOT_BASE + 4).contains(&id) {
+        if let Some(dir) = Direction::from_idx((id - hooks::WIN_STRETCH_HOT_BASE) as usize) {
+            if let Some(s) = states.get_mut(&mon_key) {
+                s.stretch_window(focused, dir, &Win32System);
+            }
+        }
+    } else if (hooks::WIN_SHRINK_HOT_BASE..hooks::WIN_SHRINK_HOT_BASE + 4).contains(&id) {
+        if let Some(dir) = Direction::from_idx((id - hooks::WIN_SHRINK_HOT_BASE) as usize) {
+            if let Some(s) = states.get_mut(&mon_key) {
+                s.shrink_window(focused, dir, &Win32System);
+            }
+        }
     } else if id == hooks::WIN_CYCLE_NEXT_HOT_ID {
         commands::window::handle_cycle(focused, mon_key, true, states);
     } else if id == hooks::WIN_CYCLE_PREV_HOT_ID {

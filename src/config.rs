@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::zone::{Layout, Zone};
+use crate::models::zone::{Axis, Layout, Zone, ZoneNode};
 use crate::state::workspace::WORKSPACE_COUNT;
 
 /// A node in the zone tree.
@@ -95,33 +95,45 @@ pub fn mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
-fn flatten(node: &ZoneTree, x: f32, y: f32, w: f32, h: f32) -> Vec<Zone> {
+/// Flattens a config zone tree into `zones` (leaf rects, in reading order)
+/// and returns the matching `ZoneNode` tree, whose leaves index into `zones`.
+fn flatten(node: &ZoneTree, x: f32, y: f32, w: f32, h: f32, zones: &mut Vec<Zone>) -> ZoneNode {
     if !node.columns.is_empty() {
-        let mut zones = Vec::new();
+        let mut children = Vec::new();
         let mut cx = x;
         for (i, &frac) in node.columns.iter().enumerate() {
             let cw = frac * w;
-            match node.children.get(i) {
-                Some(child) => zones.extend(flatten(child, cx, y, cw, h)),
-                None        => zones.push(Zone { x: cx, y, w: cw, h }),
-            }
+            children.push(match node.children.get(i) {
+                Some(child) => flatten(child, cx, y, cw, h, zones),
+                None => {
+                    let idx = zones.len();
+                    zones.push(Zone { x: cx, y, w: cw, h });
+                    ZoneNode::Leaf(idx)
+                }
+            });
             cx += cw;
         }
-        zones
+        ZoneNode::Split { axis: Axis::Horizontal, children }
     } else if !node.rows.is_empty() {
-        let mut zones = Vec::new();
+        let mut children = Vec::new();
         let mut cy = y;
         for (i, &frac) in node.rows.iter().enumerate() {
             let rh = frac * h;
-            match node.children.get(i) {
-                Some(child) => zones.extend(flatten(child, x, cy, w, rh)),
-                None        => zones.push(Zone { x, y: cy, w, h: rh }),
-            }
+            children.push(match node.children.get(i) {
+                Some(child) => flatten(child, x, cy, w, rh, zones),
+                None => {
+                    let idx = zones.len();
+                    zones.push(Zone { x, y: cy, w, h: rh });
+                    ZoneNode::Leaf(idx)
+                }
+            });
             cy += rh;
         }
-        zones
+        ZoneNode::Split { axis: Axis::Vertical, children }
     } else {
-        vec![Zone { x, y, w, h }]
+        let idx = zones.len();
+        zones.push(Zone { x, y, w, h });
+        ZoneNode::Leaf(idx)
     }
 }
 
@@ -135,10 +147,9 @@ pub fn to_layouts(cfg: &Config) -> Vec<Option<Layout>> {
     let mut slots: Vec<Option<Layout>> = vec![None; WORKSPACE_COUNT];
     let mut unindexed: Vec<Layout> = Vec::new();
     for entry in &cfg.layout {
-        let layout = Layout {
-            name: entry.name.clone(),
-            zones: flatten(&entry.zones, 0.0, 0.0, 1.0, 1.0),
-        };
+        let mut zones = Vec::new();
+        let tree = flatten(&entry.zones, 0.0, 0.0, 1.0, 1.0, &mut zones);
+        let layout = Layout { name: entry.name.clone(), zones, tree };
         match entry.index {
             Some(i) if (1..=WORKSPACE_COUNT).contains(&i) => {
                 let slot = i - 1;

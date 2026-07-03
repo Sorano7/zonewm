@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::{HashMap, HashSet}};
 
 use windows::Win32::{Foundation::HWND, Graphics::Gdi::HMONITOR};
 
-use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Zone}}, state::{monitor_state::MonitorState, workspace::WORKSPACE_COUNT}};
+use crate::{models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Axis, Layout, Zone, ZoneNode}}, state::{monitor_state::MonitorState, workspace::WORKSPACE_COUNT}};
 
 pub fn h(n: usize) -> HWND {
     HWND(n as *mut core::ffi::c_void)
@@ -86,6 +86,7 @@ pub fn one_col_layout() -> Layout {
     Layout {
         name: "1-col".into(),
         zones: vec![Zone { x: 0.0, y: 0.0, w: 1.0, h: 1.0 }],
+        tree: ZoneNode::Leaf(0),
     }
 }
 
@@ -96,6 +97,10 @@ pub fn two_col_layout() -> Layout {
             Zone { x: 0.0, y: 0.0, w: 0.5, h: 1.0 },
             Zone { x: 0.5, y: 0.0, w: 0.5, h: 1.0 },
         ],
+        tree: ZoneNode::Split {
+            axis: Axis::Horizontal,
+            children: vec![ZoneNode::Leaf(0), ZoneNode::Leaf(1)],
+        },
     }
 }
 
@@ -106,6 +111,10 @@ pub fn two_row_layout() -> Layout {
             Zone { x: 0.0, y: 0.0, w: 1.0, h: 0.5 },
             Zone { x: 0.0, y: 0.5, w: 1.0, h: 0.5 },
         ],
+        tree: ZoneNode::Split {
+            axis: Axis::Vertical,
+            children: vec![ZoneNode::Leaf(0), ZoneNode::Leaf(1)],
+        },
     }
 }
 
@@ -118,6 +127,13 @@ pub fn two_by_two_layout() -> Layout {
             Zone { x: 0.0, y: 0.5, w: 0.5, h: 0.5 },
             Zone { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
         ],
+        tree: ZoneNode::Split {
+            axis: Axis::Vertical,
+            children: vec![
+                ZoneNode::Split { axis: Axis::Horizontal, children: vec![ZoneNode::Leaf(0), ZoneNode::Leaf(1)] },
+                ZoneNode::Split { axis: Axis::Horizontal, children: vec![ZoneNode::Leaf(2), ZoneNode::Leaf(3)] },
+            ],
+        },
     }
 }
 

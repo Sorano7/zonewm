@@ -38,6 +38,8 @@ pub const WIN_MOVE_HOT_BASE:     i32 = 37; // +0..3
 pub const WIN_SWAP_HOT_BASE:     i32 = 41; // +0..3
 pub const WIN_CYCLE_NEXT_HOT_ID: i32 = 45;
 pub const WIN_CYCLE_PREV_HOT_ID: i32 = 46;
+pub const WIN_STRETCH_HOT_BASE:  i32 = 47; // +0..3 → Left/Down/Up/Right (uiop)
+pub const WIN_SHRINK_HOT_BASE:   i32 = 51; // +0..3
 
 const TIMER_ID: usize = 1;
 
@@ -167,6 +169,16 @@ fn hjkl_dir(vk: u32) -> Option<usize> {
     }
 }
 
+fn uiop_dir(vk: u32) -> Option<usize> {
+    match vk {
+        0x55 => Some(0), // U → Left
+        0x49 => Some(1), // I → Down
+        0x4F => Some(2), // O → Up
+        0x50 => Some(3), // P → Right
+        _ => None,
+    }
+}
+
 fn post_hotkey(id: i32) {
     let tid = MAIN_TID.with(|t| t.get());
     unsafe { let _ = PostThreadMessageW(tid, WM_HOTKEY, WPARAM(id as usize), LPARAM(0)); }
@@ -218,6 +230,21 @@ unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT
                 Some(WIN_MOVE_HOT_BASE + dir as i32)
             } else if ctrl && alt && !shift {
                 Some(WIN_SWAP_HOT_BASE + dir as i32)
+            } else {
+                None
+            };
+            if let Some(id) = id {
+                post_hotkey(id);
+                return LRESULT(1);
+            }
+        }
+
+        // UIOP stretch/shrink family
+        if let Some(dir) = uiop_dir(vk) {
+            let id = if alt && shift && !ctrl {
+                Some(WIN_STRETCH_HOT_BASE + dir as i32)
+            } else if ctrl && alt && !shift {
+                Some(WIN_SHRINK_HOT_BASE + dir as i32)
             } else {
                 None
             };

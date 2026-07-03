@@ -21,6 +21,17 @@ impl Rect {
     pub fn height(self) -> i32 {
         self.bottom - self.top
     }
+
+    /// Bounding box of a non-empty slice of rects.
+    pub fn union(rects: &[Rect]) -> Rect {
+        let first = rects[0];
+        rects[1..].iter().fold(first, |acc, r| Rect {
+            left:   acc.left.min(r.left),
+            top:    acc.top.min(r.top),
+            right:  acc.right.max(r.right),
+            bottom: acc.bottom.max(r.bottom),
+        })
+    }
 }
 
 impl From<RECT> for Rect {

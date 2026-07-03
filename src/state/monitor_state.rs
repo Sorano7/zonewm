@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Zone}}, state::{window_state::WindowState, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -20,6 +20,8 @@ pub struct MonitorState {
     snap_cache: HashMap<isize, Rect>,
     /// Raw window rect captured before a window was first snapped to a zone.
     pre_snap_rects: HashMap<isize, Rect>,
+    /// Each zoned hwnd's temporary stretch.
+    visual_span: HashMap<isize, Reach>,
 }
 
 impl MonitorState {
@@ -36,6 +38,7 @@ impl MonitorState {
             hwnd_ws:        HashMap::new(),
             snap_cache:     HashMap::new(),
             pre_snap_rects: HashMap::new(),
+            visual_span:    HashMap::new(),
         }
     }
 
@@ -62,6 +65,7 @@ impl MonitorState {
                 .map(|l| l.zones.len()).unwrap_or(0);
             self.workspaces[i].zoned.resize_with(zone_count, Vec::new);
         }
+        self.visual_span.clear();
         self.reflow(sys);
     }
 
@@ -170,6 +174,7 @@ impl MonitorState {
         }
         self.hwnd_ws.insert(key, ws_idx);
         self.snap_cache.remove(&key);
+        self.visual_span.remove(&key);
     }
 
     pub fn assign_to_zone(&mut self, zone_idx: usize, hwnd: HWND, pre_drag_rect: Rect) {
@@ -208,12 +213,14 @@ impl MonitorState {
         }
         ws.floating.push(hwnd);
         self.snap_cache.remove(&key);
+        self.visual_span.remove(&key);
         true
     }
 
     pub fn move_window_to_zone_idx(&mut self, hwnd: HWND, dst_zone: usize, sys: &impl WindowSystem) {
         let key = hwnd.0 as isize;
         let ws_idx = self.active_ws;
+        self.visual_span.remove(&key);
 
         // Capture pre_snap_rect when first transitioning from non-zoned.
         if !self.workspaces[ws_idx].zoned.iter().any(|z| z.contains(&hwnd)) {
@@ -254,6 +261,7 @@ impl MonitorState {
         }
         self.snap_cache.remove(&key);
         self.pre_snap_rects.remove(&key);
+        self.visual_span.remove(&key);
     }
 
     pub fn topmost_in_zone(&self, zone_idx: usize, sys: &impl WindowSystem) -> Option<HWND> {
@@ -344,6 +352,7 @@ impl MonitorState {
         let ws = &mut self.workspaces[self.active_ws];
         ws.layout_idx = layout_idx;
         ws.zoned.resize_with(new_len, Vec::new);
+        self.visual_span.clear();
     }
 
     pub fn reflow(&mut self, sys: &impl WindowSystem) {
@@ -352,15 +361,52 @@ impl MonitorState {
         let work_area = self.monitor.work_area;
         for (i, zone) in layout.zones.iter().enumerate() {
             if let Some(hwnds) = ws.zoned.get(i) {
-                let rect = zone.to_rect(work_area);
                 for &hwnd in hwnds {
                     let key = hwnd.0 as isize;
+                    let rect = match self.visual_span.get(&key) {
+                        Some(&reach) => layout.bounds_for_reach(i, reach, work_area),
+                        None => zone.to_rect(work_area),
+                    };
                     if self.snap_cache.get(&key) != Some(&rect) {
                         sys.snap_window(hwnd, &rect);
                         self.snap_cache.insert(key, rect);
                     }
                 }
             }
+        }
+    }
+
+    pub fn stretch_window(&mut self, hwnd: HWND, dir: Direction, sys: &impl WindowSystem) {
+        self.adjust_stretch(hwnd, dir, true, sys);
+    }
+
+    pub fn shrink_window(&mut self, hwnd: HWND, dir: Direction, sys: &impl WindowSystem) {
+        self.adjust_stretch(hwnd, dir, false, sys);
+    }
+
+    fn adjust_stretch(&mut self, hwnd: HWND, dir: Direction, grow: bool, sys: &impl WindowSystem) {
+        let WindowState::Zoned(zone_idx) = self.window_state(hwnd) else { return };
+        let layout_idx = self.workspaces[self.active_ws].layout_idx;
+        let Some(layout) = self.layouts.get(layout_idx).and_then(|l| l.as_ref()) else { return };
+        let (axis, forward) = dir.axis();
+        let work_area = self.monitor.work_area;
+
+        let key = hwnd.0 as isize;
+        let old_reach = self.visual_span.get(&key).copied().unwrap_or_default();
+        let old_rect = layout.bounds_for_reach(zone_idx, old_reach, work_area);
+
+        let mut new_reach = old_reach;
+        if grow { new_reach.grow(axis, forward); } else { new_reach.shrink(axis, forward); }
+        let new_rect = layout.bounds_for_reach(zone_idx, new_reach, work_area);
+
+        if new_rect == old_rect { return; }
+
+        sys.snap_window(hwnd, &new_rect);
+        self.snap_cache.insert(key, new_rect);
+        if new_reach == Reach::default() {
+            self.visual_span.remove(&key);
+        } else {
+            self.visual_span.insert(key, new_reach);
         }
     }
 
@@ -475,6 +521,7 @@ impl MonitorState {
         self.workspaces[self.active_ws].remove(hwnd);
         self.hwnd_ws.insert(key, target_ws);
         self.snap_cache.remove(&key);
+        self.visual_span.remove(&key);
         sys.set_cloak(hwnd, true);
     }
 
@@ -499,7 +546,7 @@ impl MonitorState {
 mod test {
     use std::collections::HashMap;
 
-    use crate::{models::monitor::Rect, state::window_state::WindowState, test_utils::{MockSystem, h, make_layouts, make_state, two_by_two_layout, two_col_layout}};
+    use crate::{models::monitor::Rect, state::window_state::{Direction, WindowState}, test_utils::{MockSystem, h, make_layouts, make_state, two_by_two_layout, two_col_layout, work_area}};
 
     #[test]
     fn assign_places_window_in_zone() {
@@ -773,6 +820,101 @@ mod test {
             ms.floating_focus_candidates(&sys),
             vec![(h(1), Rect { left: 100, top: 100, right: 300, bottom: 300 })],
         );
+    }
+
+    #[test]
+    fn stretch_window_snaps_to_expanded_rect_without_changing_zone() {
+        let sys = MockSystem::default();
+        let mut ms = make_state(); // two_col_layout: zone 0 left, zone 1 right
+        ms.assign_to_zone(0, h(1), Rect::default());
+
+        ms.stretch_window(h(1), Direction::Right, &sys);
+
+        assert_eq!(ms.window_state(h(1)), WindowState::Zoned(0));
+        assert_eq!(sys.snapped.borrow().last(), Some(&(1, work_area())));
+    }
+
+    #[test]
+    fn stretch_survives_a_reflow_trigger() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        ms.stretch_window(h(1), Direction::Right, &sys);
+
+        sys.snapped.borrow_mut().clear();
+        ms.reflow(&sys);
+
+        // No new snap: the cache already matches the stretched rect, so a
+        // reflow triggered by e.g. a workspace switch leaves it in place.
+        assert!(sys.snapped.borrow().is_empty());
+    }
+
+    #[test]
+    fn reassigning_a_stretched_window_reverts_it_to_the_new_zones_rect_on_reflow() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        ms.stretch_window(h(1), Direction::Right, &sys);
+
+        ms.assign_to_zone(1, h(1), Rect::default());
+        sys.snapped.borrow_mut().clear();
+        ms.reflow(&sys);
+
+        assert_eq!(
+            sys.snapped.borrow().last(),
+            Some(&(1, Rect { left: 960, top: 0, right: 1920, bottom: 1080 })),
+        );
+    }
+
+    #[test]
+    fn stretch_no_ops_when_layout_has_no_sibling_in_that_direction() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+
+        ms.stretch_window(h(1), Direction::Left, &sys);
+
+        assert!(sys.snapped.borrow().is_empty());
+    }
+
+    #[test]
+    fn stretch_repeated_no_ops_once_the_work_area_is_fully_consumed() {
+        let sys = MockSystem::default();
+        let mut ms = make_state(); // two_col_layout: only one sibling to consume
+        ms.assign_to_zone(0, h(1), Rect::default());
+
+        ms.stretch_window(h(1), Direction::Right, &sys); // consumes zone 1, now covers work_area()
+        sys.snapped.borrow_mut().clear();
+        ms.stretch_window(h(1), Direction::Right, &sys); // nothing left to consume
+
+        assert!(sys.snapped.borrow().is_empty());
+    }
+
+    #[test]
+    fn shrink_releases_growth_from_the_opposite_edge() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        ms.stretch_window(h(1), Direction::Right, &sys); // covers work_area()
+
+        // Shrinking "left" releases the rightward growth, back to zone 0's own rect.
+        ms.shrink_window(h(1), Direction::Left, &sys);
+
+        assert_eq!(
+            sys.snapped.borrow().last(),
+            Some(&(1, Rect { left: 0, top: 0, right: 960, bottom: 1080 })),
+        );
+    }
+
+    #[test]
+    fn shrink_below_original_size_is_a_no_op() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+
+        ms.shrink_window(h(1), Direction::Left, &sys);
+
+        assert!(sys.snapped.borrow().is_empty());
     }
 
     #[test]
