@@ -49,7 +49,7 @@ pub fn reconcile(
         } else {
             let layouts = states.values().next()
                 .map(|ms| ms.layouts.clone())
-                .unwrap_or_else(|| config::to_layouts(&config::load(cfg_path)));
+                .unwrap_or_else(|| config::layout::to_layouts(&config::load(cfg_path)));
             let mut ms = MonitorState::new(m, layouts);
             if let Some(&idx) = saved.monitor_layouts.get(&ms.monitor_key()) {
                 ms.switch_layout(idx);

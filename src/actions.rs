@@ -3,6 +3,7 @@ use windows::Win32::Foundation::HWND;
 use crate::{commands, models::system::Win32System, overlay::flash::FlashOverlay, state::{StateMap, window_state::Direction}};
 
 pub mod hooks;
+pub mod keymap;
 
 pub struct ActionCtx<'a> {
     pub states: &'a mut StateMap,
@@ -11,6 +12,7 @@ pub struct ActionCtx<'a> {
     pub flash: &'a mut FlashOverlay,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Action {
     SetLayout(usize),
     SetWorkspace(usize),
@@ -26,6 +28,62 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn to_string(&self) -> String {
+        match self {
+            Action::SetLayout(idx)    => format!("set_layout_{}", idx),
+            Action::SetWorkspace(idx) => format!("set_workspace_{}", idx),
+            Action::WinMoveWS(idx)    => format!("move_to_workspace_{}", idx),
+            Action::SetFloat          => "set_float".into(),
+            Action::ToggleMonLock     => "toggle_monitor_lock".into(),
+            Action::WinCycle(fw)      => format!("cycle_window_{}", if *fw {"next"} else {"prev"}),
+            Action::WinFocus(dir)     => format!("move_focus_{}", dir.to_string()),
+            Action::WinMove(dir)      => format!("move_window_{}", dir.to_string()),
+            Action::WinSwap(dir)      => format!("swap_window_{}", dir.to_string()),
+            Action::WinStretch(dir)   => format!("stretch_window_{}", dir.to_string()),
+            Action::WinShrink(dir)    => format!("shrink_window_{}", dir.to_string()),
+        }
+    }
+
+    pub fn from_string(s: &str) -> Option<Self> {
+        if s == "set_float" {
+            Some(Action::SetFloat)
+        } else if s == "toggle_monitor_lock" {
+            Some(Action::ToggleMonLock)
+        } else if let Some(rest) = s.strip_prefix("set_layout_") {
+            let idx = rest.parse::<usize>().ok()? - 1;
+            Some(Action::SetLayout(idx))
+        } else if let Some(rest) = s.strip_prefix("set_workspace_") {
+            let idx = rest.parse::<usize>().ok()? - 1;
+            Some(Action::SetWorkspace(idx))
+        } else if let Some(rest) = s.strip_prefix("move_to_workspace_") {
+            let idx = rest.parse::<usize>().ok()? - 1;
+            Some(Action::WinMoveWS(idx))
+        } else if let Some(rest) = s.strip_prefix("cycle_window_") {
+            match rest {
+                "next" => Some(Action::WinCycle(true)),
+                "prev" => Some(Action::WinCycle(false)),
+                _ => None,
+            }
+        } else if let Some(rest) = s.strip_prefix("move_focus_") {
+            let dir = Direction::from_string(rest)?;
+            Some(Action::WinFocus(dir))
+        } else if let Some(rest) = s.strip_prefix("move_window_") {
+            let dir = Direction::from_string(rest)?;
+            Some(Action::WinMove(dir))
+        } else if let Some(rest) = s.strip_prefix("swap_window_") {
+            let dir = Direction::from_string(rest)?;
+            Some(Action::WinSwap(dir))
+        } else if let Some(rest) = s.strip_prefix("stretch_window_") {
+            let dir = Direction::from_string(rest)?;
+            Some(Action::WinStretch(dir))
+        } else if let Some(rest) = s.strip_prefix("shrink_window_") {
+            let dir = Direction::from_string(rest)?;
+            Some(Action::WinShrink(dir))
+        } else {
+            None
+        }
+    }
+
     pub fn execute(&self, ctx: &mut ActionCtx) {
         match self {
             Action::SetLayout(idx)    => self.set_layout(*idx, ctx),

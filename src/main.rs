@@ -2,6 +2,6 @@
 
 use zonewm::run_wm;
 
-fn main() {
-    run_wm();
+fn main() -> Result<(), &'static str> {
+    run_wm()
 }

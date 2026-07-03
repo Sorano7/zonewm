@@ -26,21 +26,21 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetTimer, TranslateMessage, MSG, WM_HOTKEY, WM_TIMER,
 };
 
+use crate::actions::hooks::KEYMAP_REG;
 use crate::models::monitor;
 
 use crate::overlay::{
     flash::{FlashOverlay, NO_HWND, HOT_RELOAD_MS, STYLE_POLL_MS, DISPLAY_MS, MONITOR_POLL_MS},
 };
 use crate::state::{StateMap, set_all_window_styles};
-use crate::state::window_state::Direction;
 use crate::tray::SystemTray;
-use crate::actions::{Action, ActionCtx, hooks};
+use crate::actions::{ActionCtx, hooks};
 
 fn hot_reload(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<SystemTime>) {
     let new_mtime = config::mtime(cfg_path);
     if new_mtime != *cfg_mtime {
         *cfg_mtime = new_mtime;
-        let layouts = config::to_layouts(&config::load(cfg_path));
+        let layouts = config::layout::to_layouts(&config::load(cfg_path));
         for ms in states.values_mut() {
             ms.reload_layouts(layouts.clone(), &Win32System);
         }
@@ -59,60 +59,16 @@ fn on_hotkey(
 ) {
     let focused = unsafe { GetForegroundWindow() };
     let mon_key = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) }.0 as isize;
-    let hot_count = state::workspace::WORKSPACE_COUNT as i32;
+    // let hot_count = state::workspace::WORKSPACE_COUNT as i32;
 
     let mut ctx = ActionCtx {
         states: states, mon_key: mon_key, focused: focused, flash: flash,
     };
 
-    if (hooks::LAYOUT_HOT_BASE..hooks::LAYOUT_HOT_BASE + hot_count).contains(&id) {
-        let layout_idx = (id - hooks::LAYOUT_HOT_BASE) as usize;
-        Action::SetLayout(layout_idx).execute(&mut ctx);
-
-    } else if (hooks::WORKSPACE_HOT_BASE..hooks::WORKSPACE_HOT_BASE + hot_count).contains(&id) {
-        let ws_idx = (id - hooks::WORKSPACE_HOT_BASE) as usize;
-        Action::SetWorkspace(ws_idx).execute(&mut ctx);
-
-    } else if (hooks::MOVE_HOT_BASE..hooks::MOVE_HOT_BASE + hot_count).contains(&id) {
-        let ws_idx = (id - hooks::MOVE_HOT_BASE) as usize;
-        Action::WinMoveWS(ws_idx).execute(&mut ctx);
-
-    } else if id == hooks::FLOAT_HOT_ID {
-        Action::SetFloat.execute(&mut ctx);
-
-    } else if id == hooks::MONITOR_LOCK_HOT_ID {
-        Action::ToggleMonLock.execute(&mut ctx);
-
-    } else if (hooks::FOCUS_HOT_BASE..hooks::FOCUS_HOT_BASE + 4).contains(&id) {
-        if let Some(dir) = Direction::from_idx((id - hooks::FOCUS_HOT_BASE) as usize) {
-            Action::WinFocus(dir).execute(&mut ctx);
-        }
-
-    } else if (hooks::WIN_MOVE_HOT_BASE..hooks::WIN_MOVE_HOT_BASE + 4).contains(&id) {
-        if let Some(dir) = Direction::from_idx((id - hooks::WIN_MOVE_HOT_BASE) as usize) {
-            Action::WinMove(dir).execute(&mut ctx);
-        }
-
-    } else if (hooks::WIN_SWAP_HOT_BASE..hooks::WIN_SWAP_HOT_BASE + 4).contains(&id) {
-        if let Some(dir) = Direction::from_idx((id - hooks::WIN_SWAP_HOT_BASE) as usize) {
-            Action::WinSwap(dir).execute(&mut ctx);
-        }
-
-    } else if (hooks::WIN_STRETCH_HOT_BASE..hooks::WIN_STRETCH_HOT_BASE + 4).contains(&id) {
-        if let Some(dir) = Direction::from_idx((id - hooks::WIN_STRETCH_HOT_BASE) as usize) {
-            Action::WinStretch(dir).execute(&mut ctx);
-        }
-
-    } else if (hooks::WIN_SHRINK_HOT_BASE..hooks::WIN_SHRINK_HOT_BASE + 4).contains(&id) {
-        if let Some(dir) = Direction::from_idx((id - hooks::WIN_SHRINK_HOT_BASE) as usize) {
-            Action::WinShrink(dir).execute(&mut ctx);
-        }
-
-    } else if id == hooks::WIN_CYCLE_NEXT_HOT_ID {
-        Action::WinCycle(true).execute(&mut ctx);
-
-    } else if id == hooks::WIN_CYCLE_PREV_HOT_ID {
-        Action::WinCycle(false).execute(&mut ctx);
+    if let Some(action) = KEYMAP_REG.with(|r| {
+        r.get()?.get_action_from_id(id)
+    }) {
+        action.execute(&mut ctx);
     }
 }
 
@@ -142,8 +98,6 @@ fn run(
                 hooks::tick();
                 flash.try_expire(msg.wParam.0);
 
-                let focused = unsafe { GetForegroundWindow() };
-
                 if tray.quit_requested() {
                     running.store(false, Ordering::SeqCst);
                 }
@@ -155,6 +109,7 @@ fn run(
                 }
                 #[cfg(debug_assertions)]
                 if msg.wParam.0 == display_timer {
+                    let focused = unsafe { GetForegroundWindow() };
                     debug::print_status(states, focused);
                 }
                 if msg.wParam.0 == style_timer {
@@ -182,7 +137,7 @@ fn run(
     }
 }
 
-pub fn run_wm() {
+pub fn run_wm() -> Result<(), &'static str> {
     #[cfg(debug_assertions)]
     debug::enable_ansi_console();
     let running = Arc::new(AtomicBool::new(true));
@@ -196,7 +151,15 @@ pub fn run_wm() {
     unsafe { let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); }
 
     let cfg_path = config::config_path();
-    let layouts = config::to_layouts(&config::load(&cfg_path));
+    let layouts = config::layout::to_layouts(&config::load(&cfg_path));
+    let keyreg = match config::keymap::to_keymaps(&config::load(&cfg_path)) {
+        Ok(r) => r,
+        Err(e) => return Err(e.to_string().leak()),
+    };
+
+    KEYMAP_REG.with(|r| {
+        let _ = r.set(keyreg);
+    });
 
     let saved = config::load_state(&config::state_path());
     let monitors = monitor::enumerate_monitors();
@@ -242,4 +205,5 @@ pub fn run_wm() {
     hooks::uninstall(destroy_hook);
     hooks::uninstall(show_hook);
     hooks::uninstall_kbd(kbd_hook);
+    Ok(())
 }

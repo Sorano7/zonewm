@@ -1289,6 +1289,7 @@ dependencies = [
  "ctrlc",
  "dirs",
  "serde",
+ "thiserror 2.0.18",
  "toml",
  "tray-icon",
  "windows",
