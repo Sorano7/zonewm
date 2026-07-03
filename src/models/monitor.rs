@@ -44,6 +44,7 @@ impl From<RECT> for Rect {
 pub struct Monitor {
     pub handle: HMONITOR,
     pub work_area: Rect,
+    #[allow(unused)]
     pub device_name: String,
     pub device_id: String,
 }
