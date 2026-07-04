@@ -76,7 +76,7 @@ pub fn set_all_window_styles(states: &mut StateMap, prev_focused: HWND) -> Optio
 
     if prev_focused != focused {
         clear_window_border(prev_focused);
-        Some(prev_focused)
+        Some(focused)
     } else {
         None
     }
