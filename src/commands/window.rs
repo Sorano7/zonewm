@@ -3,7 +3,7 @@ use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_COLOR_DEFAULT, DWM
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
 };
-use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWMINIMIZED, SetForegroundWindow, ShowWindow};
 
 use crate::models::system::{Win32System, WindowSystem};
 use crate::models::monitor::Rect;
@@ -37,6 +37,12 @@ pub fn set_foreground_window(hwnd: HWND) {
         };
         SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
         let _ = SetForegroundWindow(hwnd);
+    }
+}
+
+pub fn set_window_minimize(hwnd: HWND) {
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOWMINIMIZED);
     }
 }
 

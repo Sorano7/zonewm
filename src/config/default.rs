@@ -201,6 +201,14 @@ combo = "alt+shift+f"
 action = "set_float"
 
 [[keymap]]
+combo = "alt+f"
+action = "set_fullscreen"
+
+[[keymap]]
+combo = "alt+m"
+action = "set_minimized"
+
+[[keymap]]
 combo = "ctrl+alt+shift+g"
 action = "toggle_monitor_lock"
 "#;

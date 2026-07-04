@@ -22,6 +22,8 @@ pub struct MonitorState {
     pre_snap_rects: HashMap<isize, Rect>,
     /// Each zoned hwnd's temporary stretch.
     visual_span: HashMap<isize, Reach>,
+    /// Slot for fullscreen display.
+    fullscreen: Option<HWND>,
 }
 
 impl MonitorState {
@@ -39,6 +41,7 @@ impl MonitorState {
             snap_cache:     HashMap::new(),
             pre_snap_rects: HashMap::new(),
             visual_span:    HashMap::new(),
+            fullscreen:     None,
         }
     }
 
@@ -359,14 +362,18 @@ impl MonitorState {
         let ws = &self.workspaces[self.active_ws];
         let Some(layout) = self.layouts.get(ws.layout_idx).and_then(|l| l.as_ref()) else { return; };
         let work_area = self.monitor.work_area;
+
         for (i, zone) in layout.zones.iter().enumerate() {
             if let Some(hwnds) = ws.zoned.get(i) {
                 for &hwnd in hwnds {
                     let key = hwnd.0 as isize;
-                    let rect = match self.visual_span.get(&key) {
-                        Some(&reach) => layout.bounds_for_reach(i, reach, work_area),
-                        None => zone.to_rect(work_area),
-                    };
+
+                    let fullscreen_rect = self.fullscreen.filter(|&f| f == hwnd).map(|_| work_area);
+                    let visual_rect = self.visual_span.get(&key).map(|&r| layout.bounds_for_reach(i, r, work_area));
+                    let zone_rect = Some(zone.to_rect(work_area));
+                    let rect = fullscreen_rect.or_else(|| visual_rect).or_else(|| zone_rect)
+                        .expect("Zone rect must exist");
+
                     if self.snap_cache.get(&key) != Some(&rect) {
                         sys.snap_window(hwnd, &rect);
                         self.snap_cache.insert(key, rect);
@@ -562,6 +569,15 @@ impl MonitorState {
 
     pub fn is_stretched(&self, hwnd: HWND) -> bool {
         self.visual_span.keys().any(|&k| k == hwnd.0 as isize)
+    }
+
+    pub fn set_fullscreen(&mut self, hwnd: HWND, sys: &impl WindowSystem) {
+        if self.fullscreen.filter(|&p| p == hwnd).is_some() {
+            self.fullscreen = None;
+        } else {
+            self.fullscreen = Some(hwnd);
+        }
+        self.reflow(sys);
     }
 }
 

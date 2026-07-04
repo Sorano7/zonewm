@@ -25,6 +25,8 @@ pub enum Action {
     WinSwap(Direction),
     WinStretch(Direction),
     WinShrink(Direction),
+    WinFullscreen,
+    WinMinimize,
 }
 
 impl Action {
@@ -41,6 +43,8 @@ impl Action {
             Action::WinSwap(dir)      => format!("swap_window_{}", dir.to_string()),
             Action::WinStretch(dir)   => format!("stretch_window_{}", dir.to_string()),
             Action::WinShrink(dir)    => format!("shrink_window_{}", dir.to_string()),
+            Action::WinFullscreen     => "set_fullscreen".into(),
+            Action::WinMinimize       => "set_minimized".into(),
         }
     }
 
@@ -49,6 +53,10 @@ impl Action {
             Some(Action::SetFloat)
         } else if s == "toggle_monitor_lock" {
             Some(Action::ToggleMonLock)
+        } else if s == "set_fullscreen" {
+            Some(Action::WinFullscreen)
+        } else if s == "set_minimized" {
+            Some(Action::WinMinimize)
         } else if let Some(rest) = s.strip_prefix("set_layout_") {
             let idx = rest.parse::<usize>().ok()? - 1;
             Some(Action::SetLayout(idx))
@@ -97,7 +105,8 @@ impl Action {
             Action::WinSwap(dir)      => self.swap_window(*dir, ctx),
             Action::WinStretch(dir)   => self.stretch_window(*dir, ctx),
             Action::WinShrink(dir)    => self.shrink_window(*dir, ctx),
-
+            Action::WinFullscreen     => self.set_fullscreen(ctx),
+            Action::WinMinimize       => self.set_minimize(ctx),
         }
     }
 
@@ -178,6 +187,20 @@ impl Action {
     fn shrink_window(&self, dir: Direction, ctx: &mut ActionCtx) {
         if let Some(ms) = ctx.states.get_mut(&ctx.mon_key) {
             ms.shrink_window(ctx.focused, dir, &Win32System);
+        }
+    }
+
+    fn set_fullscreen(&self, ctx: &mut ActionCtx) {
+        if let Some(ms) = ctx.states.get_mut(&ctx.mon_key) {
+            ms.set_fullscreen(ctx.focused, &Win32System);
+        }
+    }
+
+    fn set_minimize(&self, ctx: &mut ActionCtx) {
+        commands::window::set_window_minimize(ctx.focused);
+        if let Some(prev) = ctx.states.get_mut(&ctx.mon_key)
+            .and_then(|ms| ms.get_last_focused_window(&Win32System)) {
+                commands::window::set_foreground_window(prev);
         }
     }
 }
