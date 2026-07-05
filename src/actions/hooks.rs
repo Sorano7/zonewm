@@ -171,6 +171,7 @@ unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT
             r.get()?.get_id_from_keymap(Keymap { mods: mods, vk: info.vkCode })
         }) {
             post_hotkey(id);
+            return LRESULT(1);
         }
     }
     CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp)
