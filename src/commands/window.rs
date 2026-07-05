@@ -1,5 +1,6 @@
 use windows::Win32::Foundation::{COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_COLOR_DEFAULT, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute};
+use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
 };
@@ -7,8 +8,9 @@ use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWMINIMIZED, SetForegroundWin
 
 use crate::models::system::{Win32System, WindowSystem};
 use crate::models::monitor::Rect;
+use crate::models::window;
 use crate::state::StateMap;
-use crate::state::window_state::{Direction, WindowState, nearest_in_dir};
+use crate::state::window_state::{Direction, WindowState, is_overlapping, nearest_in_dir};
 
 fn set_dwm_attr<T>(hwnd: HWND, attr: DWMWINDOWATTRIBUTE, value: T) {
     unsafe {
@@ -163,16 +165,27 @@ pub fn handle_window_swap(
     }
 }
 
-pub fn handle_cycle(
-    focused: HWND,
-    mon_key: isize,
-    forward: bool,
-    states: &mut StateMap,
-) {
-    if let Some(ms) = states.get_mut(&mon_key) {
-        if let Some(target) = ms.cycle_window_in_zone(focused, forward, &Win32System) {
-            set_foreground_window(target);
-            clear_window_border(focused);
-        }
-    }
+pub fn handle_cycle(focused: HWND, forward: bool) {
+    let hmon = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) };
+    let windows = window::enumerate_windows_on_monitor(hmon);
+    let Some(from) = window::window_rect(focused) else {
+        return;
+    };
+
+    let candidates: Vec<&HWND> = windows.iter().filter(|&&h|
+        window::window_rect(h).is_some_and(|r| is_overlapping(from, r))
+    ).collect();
+
+    let Some(idx) = candidates.iter().position(|&&h| h == focused) else {
+        return;
+    };
+
+    let len = candidates.len();
+    let new_idx = if forward {
+        (idx + len - 1) % len
+    } else {
+        (idx + 1) % len
+    };
+
+    set_foreground_window(*candidates[new_idx]);
 }

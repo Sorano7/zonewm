@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{Direction, WindowState}, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{self, Direction, WindowState}, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -274,33 +274,6 @@ impl MonitorState {
             .copied()
     }
 
-    pub fn cycle_window_in_zone(&mut self, hwnd: HWND, forward: bool, sys: &impl WindowSystem) -> Option<HWND> {
-        let ws_idx = *self.hwnd_ws.get(&(hwnd.0 as isize))?;
-        for zone_windows in &mut self.workspaces[ws_idx].zoned {
-            let pos = match zone_windows.iter().position(|&h| h == hwnd) {
-                Some(p) => p,
-                None => continue,
-            };
-            let n = zone_windows.len();
-            // Walk through the other entries (wrapping), skipping minimized.
-            for step in 1..n {
-                let idx = if forward {
-                    (pos + step) % n
-                } else {
-                    (pos + n - step) % n
-                };
-                let candidate = zone_windows[idx];
-                if !sys.is_minimized(candidate) {
-                    zone_windows.remove(idx);
-                    zone_windows.push(candidate);
-                    return Some(candidate);
-                }
-            }
-            return None; // Only minimized windows remain
-        }
-        None // Not in any zone (floating)
-    }
-
     /// Called when a zoned window is restored from minimized.
     pub fn on_window_restored(&mut self, hwnd: HWND, sys: &impl WindowSystem) {
         let key = hwnd.0 as isize;
@@ -444,10 +417,7 @@ impl MonitorState {
             return false;
         };
 
-        let best_zone = layout
-            .zones
-            .iter()
-            .enumerate()
+        let best_zone = layout.zones.iter().enumerate()
             .filter_map(|(idx, zone)| 
                 self.auto_snap_score(zone, self.monitor.work_area, r)
                     .map(|score| (idx, score))
@@ -578,6 +548,24 @@ impl MonitorState {
             self.fullscreen = Some(hwnd);
         }
         self.reflow(sys);
+    }
+
+    pub fn snap_overlapping(&mut self, hwnd: HWND, sys: &impl WindowSystem) {
+        let Some(r) = sys.window_rect(hwnd) else {
+            return;
+        };
+        let layout_idx = self.workspaces[self.active_ws].layout_idx;
+        let Some(layout) = &self.layouts[layout_idx] else {
+            return;
+        };
+
+        for (idx, zone) in layout.zones.iter().enumerate() {
+            if window_state::is_overlapping(r, zone.to_rect(self.monitor.work_area)) {
+                self.assign_to_zone(idx, hwnd, r);
+                self.reflow(sys);
+                break;
+            }
+        }
     }
 }
 

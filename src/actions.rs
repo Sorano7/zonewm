@@ -1,6 +1,6 @@
 use windows::Win32::Foundation::HWND;
 
-use crate::{commands, models::system::Win32System, overlay::flash::FlashOverlay, state::{StateMap, window_state::Direction}};
+use crate::{commands, models::{system::Win32System}, overlay::flash::FlashOverlay, state::{StateMap, window_state::{Direction}}};
 
 pub mod hooks;
 pub mod keymap;
@@ -17,7 +17,7 @@ pub enum Action {
     SetLayout(usize),
     SetWorkspace(usize),
     WinMoveWS(usize),
-    SetFloat,
+    ToggleFloat,
     ToggleMonLock,
     WinCycle(bool),
     WinFocus(Direction),
@@ -35,7 +35,7 @@ impl Action {
             Action::SetLayout(idx)    => format!("set_layout_{}", idx),
             Action::SetWorkspace(idx) => format!("set_workspace_{}", idx),
             Action::WinMoveWS(idx)    => format!("move_to_workspace_{}", idx),
-            Action::SetFloat          => "set_float".into(),
+            Action::ToggleFloat       => "toggle_float".into(),
             Action::ToggleMonLock     => "toggle_monitor_lock".into(),
             Action::WinCycle(fw)      => format!("cycle_window_{}", if *fw {"next"} else {"prev"}),
             Action::WinFocus(dir)     => format!("move_focus_{}", dir.to_string()),
@@ -49,8 +49,8 @@ impl Action {
     }
 
     pub fn from_string(s: &str) -> Option<Self> {
-        if s == "set_float" {
-            Some(Action::SetFloat)
+        if s == "toggle_float" {
+            Some(Action::ToggleFloat)
         } else if s == "toggle_monitor_lock" {
             Some(Action::ToggleMonLock)
         } else if s == "set_fullscreen" {
@@ -97,7 +97,7 @@ impl Action {
             Action::SetLayout(idx)    => self.set_layout(*idx, ctx),
             Action::SetWorkspace(idx) => self.set_workspace(*idx, ctx), 
             Action::WinMoveWS(idx)    => self.move_window_ws(*idx, ctx), 
-            Action::SetFloat          => self.set_float(ctx), 
+            Action::ToggleFloat       => self.toggle_float(ctx), 
             Action::ToggleMonLock     => self.toggle_monitor_lock(ctx), 
             Action::WinCycle(fw)      => self.cycle_window(*fw, ctx),
             Action::WinFocus(dir)     => self.focus_window(*dir, ctx),
@@ -138,13 +138,16 @@ impl Action {
         }
     }
 
-    fn set_float(&self, ctx: &mut ActionCtx) {
+    fn toggle_float(&self, ctx: &mut ActionCtx) {
         let Some(ms) = ctx.states.get_mut(&ctx.mon_key) else {
             return;
         };
 
-        ms.set_floating(ctx.focused, &Win32System);
-
+        if ms.is_floating(ctx.focused) {
+            ms.snap_overlapping(ctx.focused, &Win32System);
+        } else {
+            ms.set_floating(ctx.focused, &Win32System);
+        }
     }
 
     fn move_window_ws(&self, idx: usize, ctx: &mut ActionCtx) {
@@ -163,7 +166,7 @@ impl Action {
     }
 
     fn cycle_window(&self, fw: bool, ctx: &mut ActionCtx) {
-        commands::window::handle_cycle(ctx.focused, ctx.mon_key, fw, ctx.states);
+        commands::window::handle_cycle(ctx.focused, fw);
     }
 
     fn focus_window(&self, dir: Direction, ctx: &mut ActionCtx) {

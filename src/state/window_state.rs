@@ -75,6 +75,10 @@ fn overlap_pct(a: Rect, b: Rect) -> f64 {
     (ix * iy) as f64 / area_a.min(area_b).max(1) as f64 * 100.0
 }
 
+pub fn is_overlapping(a: Rect, b: Rect) -> bool {
+    overlap_pct(a, b) > OVERLAP_EXCLUDE_PCT
+}
+
 /// Returns the score as (travel_gap, -perp_overlap).
 fn edge_score(from: Rect, r: Rect, dir: Direction) -> Option<(i32, i32)> {
     let (perp_overlap, reaches, travel_gap) = match dir {
@@ -106,7 +110,7 @@ fn edge_score(from: Rect, r: Rect, dir: Direction) -> Option<(i32, i32)> {
 /// Returns the nearest candidate from `from` in direction `dir`.
 pub fn nearest_in_dir<T: Copy>(candidates: &[(T, Rect)], from: Rect, dir: Direction) -> Option<T> {
     candidates.iter()
-        .filter(|&&(_, r)| overlap_pct(from, r) <= OVERLAP_EXCLUDE_PCT)
+        .filter(|&&(_, r)| !is_overlapping(from, r))
         .filter_map(|&(t, r)| edge_score(from, r, dir).map(|s| (t, s)))
         .min_by_key(|&(_, s)| s)
         .map(|(t, _)| t)

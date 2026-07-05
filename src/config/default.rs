@@ -198,7 +198,7 @@ action = "shrink_window_right"
 # ---Keymaps: Extras---
 [[keymap]]
 combo = "alt+shift+f"
-action = "set_float"
+action = "toggle_float"
 
 [[keymap]]
 combo = "alt+f"
