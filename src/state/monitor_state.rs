@@ -22,8 +22,6 @@ pub struct MonitorState {
     pre_snap_rects: HashMap<isize, Rect>,
     /// Each zoned hwnd's temporary stretch.
     visual_span: HashMap<isize, Reach>,
-    /// Slot for fullscreen display.
-    fullscreen: Option<HWND>,
 }
 
 impl MonitorState {
@@ -41,7 +39,6 @@ impl MonitorState {
             snap_cache:     HashMap::new(),
             pre_snap_rects: HashMap::new(),
             visual_span:    HashMap::new(),
-            fullscreen:     None,
         }
     }
 
@@ -341,7 +338,7 @@ impl MonitorState {
                 for &hwnd in hwnds {
                     let key = hwnd.0 as isize;
 
-                    let fullscreen_rect = self.fullscreen.filter(|&f| f == hwnd).map(|_| work_area);
+                    let fullscreen_rect = ws.fullscreen.filter(|&f| f == hwnd).map(|_| work_area);
                     let visual_rect = self.visual_span.get(&key).map(|&r| layout.bounds_for_reach(i, r, work_area));
                     let zone_rect = Some(zone.to_rect(work_area));
                     let rect = fullscreen_rect.or_else(|| visual_rect).or_else(|| zone_rect)
@@ -542,10 +539,13 @@ impl MonitorState {
     }
 
     pub fn set_fullscreen(&mut self, hwnd: HWND, sys: &impl WindowSystem) {
-        if self.fullscreen.filter(|&p| p == hwnd).is_some() {
-            self.fullscreen = None;
+        let Some(ws) = self.workspaces.get_mut(self.active_ws) else {
+            return;
+        };
+        if ws.fullscreen.filter(|&p| p == hwnd).is_some() {
+            ws.fullscreen = None;
         } else {
-            self.fullscreen = Some(hwnd);
+            ws.fullscreen = Some(hwnd);
         }
         self.reflow(sys);
     }

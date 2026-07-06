@@ -16,6 +16,8 @@ pub struct Workspace {
     /// Windows that belong to this workspace but aren't snapped to any zone.
     pub floating: Vec<HWND>,
     pub last_focused: LastFocused,
+    /// Slot for fullscreen display.
+    pub fullscreen: Option<HWND>,
 }
 
 impl Workspace {
@@ -24,7 +26,8 @@ impl Workspace {
             layout_idx: 0, 
             zoned: vec![vec![]; zone_count], 
             floating: Vec::new(), 
-            last_focused: LastFocused::default()
+            last_focused: LastFocused::default(),
+            fullscreen: None,
         }
     }
 
