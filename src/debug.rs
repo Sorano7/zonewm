@@ -1,6 +1,6 @@
 use windows::Win32::Foundation::HWND;
 
-use crate::{models::window, state::{StateMap, monitor_state::MonitorState, window_state::{WindowRecord, WindowState}}};
+use crate::{config, models::window, state::{StateMap, monitor_state::MonitorState, window_state::{WindowRecord, WindowState}}};
 
 pub fn enable_ansi_console() {
     use windows::Win32::System::Console::{

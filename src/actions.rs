@@ -49,46 +49,26 @@ impl Action {
     }
 
     pub fn from_string(s: &str) -> Option<Self> {
-        if s == "toggle_float" {
-            Some(Action::ToggleFloat)
-        } else if s == "toggle_monitor_lock" {
-            Some(Action::ToggleMonLock)
-        } else if s == "set_fullscreen" {
-            Some(Action::WinFullscreen)
-        } else if s == "set_minimized" {
-            Some(Action::WinMinimize)
-        } else if let Some(rest) = s.strip_prefix("set_layout_") {
-            let idx = rest.parse::<usize>().ok()? - 1;
-            Some(Action::SetLayout(idx))
-        } else if let Some(rest) = s.strip_prefix("set_workspace_") {
-            let idx = rest.parse::<usize>().ok()? - 1;
-            Some(Action::SetWorkspace(idx))
-        } else if let Some(rest) = s.strip_prefix("move_to_workspace_") {
-            let idx = rest.parse::<usize>().ok()? - 1;
-            Some(Action::WinMoveWS(idx))
-        } else if let Some(rest) = s.strip_prefix("cycle_window_") {
-            match rest {
+        match s {
+            "toggle_float"         => Some(Action::ToggleFloat),
+            "toggle_monitor_lock"  => Some(Action::ToggleMonLock),
+            "set_fullscreen"       => Some(Action::WinFullscreen),
+            "set_minimized"        => Some(Action::WinMinimize),
+
+            s if let Some(r) = s.strip_prefix("set_layout_")        => r.parse::<usize>().ok().map(|i| Action::SetLayout(i - 1)),
+            s if let Some(r) = s.strip_prefix("set_workspace_")     => r.parse::<usize>().ok().map(|i| Action::SetWorkspace(i - 1)),
+            s if let Some(r) = s.strip_prefix("move_to_workspace_") => r.parse::<usize>().ok().map(|i| Action::WinMoveWS(i - 1)),
+            s if let Some(r) = s.strip_prefix("cycle_window_")      => match r {
                 "next" => Some(Action::WinCycle(true)),
                 "prev" => Some(Action::WinCycle(false)),
                 _ => None,
-            }
-        } else if let Some(rest) = s.strip_prefix("move_focus_") {
-            let dir = Direction::from_string(rest)?;
-            Some(Action::WinFocus(dir))
-        } else if let Some(rest) = s.strip_prefix("move_window_") {
-            let dir = Direction::from_string(rest)?;
-            Some(Action::WinMove(dir))
-        } else if let Some(rest) = s.strip_prefix("swap_window_") {
-            let dir = Direction::from_string(rest)?;
-            Some(Action::WinSwap(dir))
-        } else if let Some(rest) = s.strip_prefix("stretch_window_") {
-            let dir = Direction::from_string(rest)?;
-            Some(Action::WinStretch(dir))
-        } else if let Some(rest) = s.strip_prefix("shrink_window_") {
-            let dir = Direction::from_string(rest)?;
-            Some(Action::WinShrink(dir))
-        } else {
-            None
+            },
+            s if let Some(r) = s.strip_prefix("move_focus_")       => Some(Action::WinFocus(Direction::from_string(r)?)),
+            s if let Some(r) = s.strip_prefix("move_window_")      => Some(Action::WinMove(Direction::from_string(r)?)),
+            s if let Some(r) = s.strip_prefix("swap_window_")      => Some(Action::WinSwap(Direction::from_string(r)?)),
+            s if let Some(r) = s.strip_prefix("stretch_window_")   => Some(Action::WinStretch(Direction::from_string(r)?)),
+            s if let Some(r) = s.strip_prefix("shrink_window_")    => Some(Action::WinShrink(Direction::from_string(r)?)),
+            _                                                      => None,
         }
     }
 

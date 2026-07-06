@@ -59,8 +59,6 @@ fn on_hotkey(
 ) {
     let focused = unsafe { GetForegroundWindow() };
     let mon_key = unsafe { MonitorFromWindow(focused, MONITOR_DEFAULTTONEAREST) }.0 as isize;
-    // let hot_count = state::workspace::WORKSPACE_COUNT as i32;
-
     let mut ctx = ActionCtx {
         states: states, mon_key: mon_key, focused: focused, flash: flash,
     };
