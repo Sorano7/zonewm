@@ -136,7 +136,6 @@ impl Action {
         };
 
         ms.move_window_to_workspace(ctx.focused, idx, &Win32System);
-        ms.switch_workspace(idx, &Win32System);
     }
 
     fn toggle_monitor_lock(&self, ctx: &mut ActionCtx) {

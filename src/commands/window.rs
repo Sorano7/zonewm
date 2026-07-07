@@ -6,6 +6,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWMINIMIZED, SetForegroundWindow, ShowWindow};
 
+use crate::commands::cloak::is_cloaked;
 use crate::models::system::{Win32System, WindowSystem};
 use crate::models::monitor::Rect;
 use crate::models::window;
@@ -173,7 +174,9 @@ pub fn handle_cycle(focused: HWND, forward: bool) {
     };
 
     let candidates: Vec<&HWND> = windows.iter().filter(|&&h|
-        window::window_rect(h).is_some_and(|r| is_overlapping(from, r))
+        window::window_rect(h).is_some_and(|r| 
+            is_overlapping(from, r) && !is_cloaked(h)
+        )
     ).collect();
 
     let Some(idx) = candidates.iter().position(|&&h| h == focused) else {

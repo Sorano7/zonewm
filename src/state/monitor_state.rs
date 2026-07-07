@@ -265,10 +265,9 @@ impl MonitorState {
     }
 
     pub fn topmost_in_zone(&self, zone_idx: usize, sys: &impl WindowSystem) -> Option<HWND> {
-        self.workspaces[self.active_ws].zoned.get(zone_idx)?
-            .iter().rev()
-            .find(|&&h| !sys.is_minimized(h))
-            .copied()
+        let zone_windows = self.workspaces[self.active_ws].zoned.get(zone_idx)?;
+        sys.enumerate_on_monitor(self.monitor.handle).into_iter()
+            .find(|h| zone_windows.contains(h) && !sys.is_minimized(*h))
     }
 
     /// Called when a zoned window is restored from minimized.
@@ -496,7 +495,7 @@ impl MonitorState {
         self.hwnd_ws.insert(key, target_ws);
         self.snap_cache.remove(&key);
         self.visual_span.remove(&key);
-        sys.set_cloak(hwnd, true);
+        self.switch_workspace(target_ws, sys);
     }
 
     pub fn uncloak_all(&self, sys: &impl WindowSystem) {
@@ -674,12 +673,12 @@ mod test {
     }
 
     #[test]
-    fn topmost_in_zone_returns_last_added() {
-        let sys = MockSystem::default();
+    fn topmost_in_zone_returns_frontmost_by_os_z_order() {
+        let sys = MockSystem { on_monitor: vec![h(1), h(2)], ..Default::default() };
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.assign_to_zone(0, h(2), Rect::default());
-        assert_eq!(ms.topmost_in_zone(0, &sys), Some(h(2)));
+        assert_eq!(ms.topmost_in_zone(0, &sys), Some(h(1)));
     }
 
     #[test]
@@ -687,7 +686,8 @@ mod test {
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
         ms.assign_to_zone(0, h(2), Rect::default());
-        let sys = MockSystem::default().with_minimized(h(2));
+        let sys = MockSystem { on_monitor: vec![h(2), h(1)], ..Default::default() }
+            .with_minimized(h(2));
         assert_eq!(ms.topmost_in_zone(0, &sys), Some(h(1)));
     }
 
@@ -695,7 +695,16 @@ mod test {
     fn topmost_in_zone_returns_none_when_all_minimized() {
         let mut ms = make_state();
         ms.assign_to_zone(0, h(1), Rect::default());
-        let sys = MockSystem::default().with_minimized(h(1));
+        let sys = MockSystem { on_monitor: vec![h(1)], ..Default::default() }
+            .with_minimized(h(1));
+        assert_eq!(ms.topmost_in_zone(0, &sys), None);
+    }
+
+    #[test]
+    fn topmost_in_zone_returns_none_when_not_reported_by_os() {
+        let sys = MockSystem::default();
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
         assert_eq!(ms.topmost_in_zone(0, &sys), None);
     }
 
@@ -729,10 +738,10 @@ mod test {
 
     #[test]
     fn zoned_focus_candidates_one_per_zone_using_topmost() {
-        let sys = MockSystem::default();
+        let sys = MockSystem { on_monitor: vec![h(2), h(1), h(3)], ..Default::default() };
         let mut ms = make_state(); // two_col_layout
         ms.assign_to_zone(0, h(1), Rect::default());
-        ms.assign_to_zone(0, h(2), Rect::default()); // topmost in zone 0
+        ms.assign_to_zone(0, h(2), Rect::default()); // topmost in zone 0 (frontmost in OS order)
         ms.assign_to_zone(1, h(3), Rect::default());
 
         let mut candidates = ms.zoned_focus_candidates(&sys);
@@ -747,7 +756,8 @@ mod test {
     fn zoned_focus_candidates_skips_empty_and_all_minimized_zones() {
         let mut ms = make_state(); // zone 0 stays empty
         ms.assign_to_zone(1, h(1), Rect::default());
-        let sys = MockSystem::default().with_minimized(h(1));
+        let sys = MockSystem { on_monitor: vec![h(1)], ..Default::default() }
+            .with_minimized(h(1));
         assert_eq!(ms.zoned_focus_candidates(&sys), vec![]);
     }
 
