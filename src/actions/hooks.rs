@@ -292,6 +292,7 @@ unsafe extern "system" fn win_event_proc(
                 let Some(ws_idx) = ms.find_workspace(hwnd) else { continue };
                 let was_zoned = matches!(ms.window_state(hwnd), WindowState::Zoned(_));
                 ms.detach_window(hwnd);
+                Win32System.forget_cloak_view(hwnd);
                 if was_zoned && ws_idx == ms.active_ws {
                     ms.reflow(&Win32System);
                 }

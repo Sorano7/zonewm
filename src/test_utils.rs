@@ -46,6 +46,7 @@ impl WindowSystem for MockSystem {
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {
         self.cloaked.borrow_mut().insert(hwnd.0 as isize, cloaked);
     }
+    fn forget_cloak_view(&self, _hwnd: HWND) {}
     fn enumerate_on_monitor(&self, _hmon: HMONITOR) -> Vec<HWND> {
         self.on_monitor.clone()
     }

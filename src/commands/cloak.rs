@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 use windows_core::{interface, Interface, GUID, HRESULT, IUnknown, IUnknown_Vtbl};
 use windows::Win32::Foundation::HWND;
@@ -47,6 +48,7 @@ unsafe trait IApplicationView: IUnknown {
 thread_local! {
     static COM_INIT: Cell<bool> = Cell::new(false);
     static COLLECTION: RefCell<Option<IApplicationViewCollection>> = RefCell::new(None);
+    static VIEWS: RefCell<HashMap<isize, IApplicationView>> = RefCell::new(HashMap::new());
 }
 
 fn ensure_com() {
@@ -71,7 +73,16 @@ fn get_collection() -> windows::core::Result<IApplicationViewCollection> {
 pub fn set_cloak(hwnd: HWND, cloaked: bool) {
     ensure_com();
     let flag: i32 = if cloaked { 2 } else { 0 };
+    let key = hwnd.0 as isize;
     unsafe {
+        let cached = VIEWS.with(|v| v.borrow().get(&key).cloned());
+        if let Some(view) = cached {
+            if view.set_cloak(1, flag).is_ok() {
+                return;
+            }
+            VIEWS.with(|v| { v.borrow_mut().remove(&key); });
+        }
+
         // Use the cached collection; on any failure, invalidate and retry once.
         // The ImmersiveShell pointer goes stale when Explorer restarts.
         let mut refreshed = false;
@@ -88,6 +99,7 @@ pub fn set_cloak(hwnd: HWND, cloaked: bool) {
                 if collection.get_view_for_hwnd(hwnd.0 as isize, &mut view).is_ok() {
                     if let Some(v) = view {
                         let _ = v.set_cloak(1, flag);
+                        VIEWS.with(|views| { views.borrow_mut().insert(key, v); });
                         return;
                     }
                 }
@@ -97,6 +109,10 @@ pub fn set_cloak(hwnd: HWND, cloaked: bool) {
             refreshed = true;
         }
     }
+}
+
+pub fn forget(hwnd: HWND) {
+    VIEWS.with(|v| { v.borrow_mut().remove(&(hwnd.0 as isize)); });
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {

@@ -10,6 +10,7 @@ pub trait WindowSystem {
     fn snap_window(&self, hwnd: HWND, rect: &Rect);
     fn restore_window_size(&self, hwnd: HWND, rect: &Rect);
     fn set_cloak(&self, hwnd: HWND, cloaked: bool);
+    fn forget_cloak_view(&self, hwnd: HWND);
     fn enumerate_on_monitor(&self, hmon: HMONITOR) -> Vec<HWND>;
     fn is_minimized(&self, hwnd: HWND) -> bool;
     fn window_rect(&self, hwnd: HWND) -> Option<Rect>;
@@ -29,6 +30,10 @@ impl WindowSystem for Win32System {
 
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {
         cloak::set_cloak(hwnd, cloaked);
+    }
+
+    fn forget_cloak_view(&self, hwnd: HWND) {
+        cloak::forget(hwnd);
     }
 
     fn enumerate_on_monitor(&self, hmon: HMONITOR) -> Vec<HWND> {
