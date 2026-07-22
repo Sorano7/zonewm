@@ -5,7 +5,7 @@ use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+    GetKeyState, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_RBUTTON, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetCursorPos, KillTimer, PostThreadMessageW, SetTimer,
@@ -179,6 +179,7 @@ unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT
 
 pub fn tick() {
     let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) < 0 };
+    let mouse_right = unsafe { GetKeyState(VK_RBUTTON.0 as i32) < 0 };
 
     DRAG.with(|d| {
         let mut opt = d.borrow_mut();
@@ -187,7 +188,7 @@ pub fn tick() {
             None => return,
         };
 
-        if shift {
+        if shift || mouse_right {
             unsafe {
                 let mut pt = POINT::default();
                 let _ = GetCursorPos(&mut pt);
