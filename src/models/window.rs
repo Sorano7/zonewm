@@ -55,6 +55,18 @@ pub fn snap_to_rect(hwnd: HWND, zone: &Rect) {
     }
 }
 
+/// Sets a window's rect directly, with no zone-snap gap or DWM frame compensation.
+pub fn translate_window(hwnd: HWND, left: i32, top: i32, w: i32, h: i32) {
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            HWND(std::ptr::null_mut()),
+            left, top, w, h,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
 pub fn bring_to_top_no_activate(hwnd: HWND) {
     unsafe {
         let _ = SetWindowPos(

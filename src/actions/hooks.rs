@@ -5,15 +5,16 @@ use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_RBUTTON, VK_SHIFT,
+    GetKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_CONTROL, VK_LWIN, VK_MENU, VK_RBUTTON, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetCursorPos, KillTimer, PostThreadMessageW, SetTimer,
-    SetWindowsHookExW, UnhookWindowsHookEx,
+    CallNextHookEx, GetAncestor, GetCursorPos, KillTimer, PostThreadMessageW, SetForegroundWindow, SetTimer,
+    SetWindowsHookExW, UnhookWindowsHookEx, WindowFromPoint,
     EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
-    HHOOK, KBDLLHOOKSTRUCT, OBJID_WINDOW, WH_KEYBOARD_LL,
+    GA_ROOT, HHOOK, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, OBJID_WINDOW, WH_KEYBOARD_LL, WH_MOUSE_LL,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WM_HOTKEY, WM_KEYDOWN, WM_SYSKEYDOWN,
+    WM_HOTKEY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN,
 };
 
 use crate::actions::keymap::{Keymap, KeymapRegistry};
@@ -37,6 +38,7 @@ struct DragState {
     zones: Vec<Rect>,
     monitor_key: isize,
     highlighted: Option<usize>,
+    manual_anchor: Option<POINT>,
 }
 
 thread_local! {
@@ -147,6 +149,19 @@ pub fn uninstall_kbd(hook: HHOOK) {
     }
 }
 
+pub fn install_mouse() -> HHOOK {
+    unsafe {
+        SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), None, 0)
+            .unwrap_or_default()
+    }
+}
+
+pub fn uninstall_mouse(hook: HHOOK) {
+    if !hook.0.is_null() {
+        unsafe { let _ = UnhookWindowsHookEx(hook); }
+    }
+}
+
 fn post_hotkey(id: i32) {
     let tid = MAIN_TID.with(|t| t.get());
     unsafe { let _ = PostThreadMessageW(tid, WM_HOTKEY, WPARAM(id as usize), LPARAM(0)); }
@@ -157,7 +172,7 @@ unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT
         let ctrl  = GetKeyState(VK_CONTROL.0 as i32) < 0;
         let shift = GetKeyState(VK_SHIFT.0 as i32)   < 0;
         let alt   = GetKeyState(VK_MENU.0 as i32)    < 0;
-        let win   = GetKeyState(VK_LWIN.0 as i32)    < 0;
+        let win   = GetKeyState(VK_LWIN.0 as i32) < 0 || GetKeyState(VK_RWIN.0 as i32) < 0;
 
         let mut mods = 0u32;
         if ctrl  { mods |= MOD_CONTROL.0; }
@@ -177,9 +192,43 @@ unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT
     CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp)
 }
 
+unsafe fn inject_dummy_key() {
+    let mut down = KEYBDINPUT::default();
+    down.wVk = VK_CONTROL;
+    let mut up = KEYBDINPUT::default();
+    up.wVk = VK_CONTROL;
+    up.dwFlags = KEYEVENTF_KEYUP;
+
+    let inputs = [
+        INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: down } },
+        INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: up } },
+    ];
+    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+}
+
 pub fn tick() {
     let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) < 0 };
     let mouse_right = unsafe { GetKeyState(VK_RBUTTON.0 as i32) < 0 };
+
+    let manual = DRAG.with(|d| {
+        d.borrow().as_ref().and_then(|ds| {
+            ds.manual_anchor.map(|anchor| (ds.dragged, ds.pre_drag_rect, anchor))
+        })
+    });
+
+    if let Some((dragged, pre_drag_rect, anchor)) = manual {
+        unsafe {
+            let mut pt = POINT::default();
+            let _ = GetCursorPos(&mut pt);
+            Win32System.translate_window(
+                dragged,
+                pre_drag_rect.left + (pt.x - anchor.x),
+                pre_drag_rect.top  + (pt.y - anchor.y),
+                pre_drag_rect.width(),
+                pre_drag_rect.height(),
+            );
+        }
+    }
 
     DRAG.with(|d| {
         let mut opt = d.borrow_mut();
@@ -311,6 +360,7 @@ unsafe extern "system" fn win_event_proc(
                     zones: Vec::new(),
                     monitor_key: 0,
                     highlighted: None,
+                    manual_anchor: None,
                 });
             });
             SetTimer(HWND(std::ptr::null_mut()), TIMER_ID, 16, None);
@@ -319,45 +369,110 @@ unsafe extern "system" fn win_event_proc(
         EVENT_SYSTEM_MOVESIZEEND => {
             let _ = KillTimer(HWND(std::ptr::null_mut()), TIMER_ID);
             let Some(ds) = DRAG.with(|d| d.borrow_mut().take()) else { return };
-
-            if let Some(ov) = ds.overlay_hwnd {
-                overlay::close(ov);
-            }
-
-            let ptr = STATE_PTR.with(|p| p.get());
-            if ptr.is_null() { return; }
-
-            if let Some(idx) = ds.highlighted {
-                Win32System.snap_window(ds.dragged, &ds.zones[idx]);
-                let states = &mut *ptr;
-                // Detach from the source monitor before assigning to the destination,
-                // so cross-monitor drags don't leave a ghost entry on the source.
-                for (&k, ms) in states.iter_mut() {
-                    if k != ds.monitor_key && ms.find_workspace(ds.dragged).is_some() {
-                        ms.detach_window(ds.dragged);
-                        break;
-                    }
-                }
-                if let Some(ms) = states.get_mut(&ds.monitor_key) {
-                    ms.assign_to_zone(idx, ds.dragged, ds.pre_drag_rect);
-                }
-            } else {
-                let states = &mut *ptr;
-                let ms_opt = states.values_mut()
-                    .find(|ms| matches!(ms.window_state(ds.dragged), WindowState::Zoned(_)));
-                if let Some(ms) = ms_opt {
-                    let cur_rect = window::window_rect(ds.dragged).unwrap_or_default();
-                    let resized = cur_rect.width()  != ds.pre_drag_rect.width()
-                               || cur_rect.height() != ds.pre_drag_rect.height();
-                    if resized {
-                        ms.set_floating_in_place(ds.dragged);
-                    } else {
-                        ms.set_floating(ds.dragged, &Win32System);
-                    }
-                }
-            }
+            end_drag(ds);
         }
 
         _ => {}
     }
+}
+
+unsafe fn end_drag(ds: DragState) {
+    if let Some(ov) = ds.overlay_hwnd {
+        overlay::close(ov);
+    }
+
+    let ptr = STATE_PTR.with(|p| p.get());
+    if ptr.is_null() { return; }
+    let states = &mut *ptr;
+
+    if let Some(idx) = ds.highlighted {
+        Win32System.snap_window(ds.dragged, &ds.zones[idx]);
+        for (&k, ms) in states.iter_mut() {
+            if k != ds.monitor_key && ms.find_workspace(ds.dragged).is_some() {
+                ms.detach_window(ds.dragged);
+                break;
+            }
+        }
+        if let Some(ms) = states.get_mut(&ds.monitor_key) {
+            ms.assign_to_zone(idx, ds.dragged, ds.pre_drag_rect);
+        }
+    } else {
+        let ms_opt = states.values_mut()
+            .find(|ms| matches!(ms.window_state(ds.dragged), WindowState::Zoned(_)));
+        if let Some(ms) = ms_opt {
+            let cur_rect = window::window_rect(ds.dragged).unwrap_or_default();
+            let resized = cur_rect.width()  != ds.pre_drag_rect.width()
+                       || cur_rect.height() != ds.pre_drag_rect.height();
+            if resized {
+                ms.set_floating_in_place(ds.dragged);
+            } else {
+                ms.set_floating(ds.dragged, &Win32System);
+            }
+        }
+    }
+}
+
+unsafe fn resolve_target(pt: POINT) -> Option<HWND> {
+    let hit = WindowFromPoint(pt);
+    if hit.0.is_null() { return None; }
+    let root = GetAncestor(hit, GA_ROOT);
+    let root = if root.0.is_null() { hit } else { root };
+    window::is_manageable(root).then_some(root)
+}
+
+fn is_manual_drag() -> bool {
+    DRAG.with(|d| d.borrow().as_ref().is_some_and(|ds| ds.manual_anchor.is_some()))
+}
+
+unsafe fn start_manual_move(hwnd: HWND, pt: POINT) {
+    let pre_drag_rect = window::window_rect(hwnd).unwrap_or_default();
+    DRAG.with(|d| {
+        *d.borrow_mut() = Some(DragState {
+            dragged: hwnd,
+            pre_drag_rect,
+            overlay_hwnd: None,
+            zones: Vec::new(),
+            monitor_key: 0,
+            highlighted: None,
+            manual_anchor: Some(pt),
+        });
+    });
+    SetTimer(HWND(std::ptr::null_mut()), TIMER_ID, 16, None);
+    let _ = SetForegroundWindow(hwnd);
+    inject_dummy_key();
+}
+
+unsafe extern "system" fn mouse_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if code >= 0 {
+        match wp.0 as u32 {
+            WM_LBUTTONDOWN => {
+                if DRAG.with(|d| d.borrow().is_none()) {
+                    let win = GetKeyState(VK_LWIN.0 as i32) < 0 || GetKeyState(VK_RWIN.0 as i32) < 0;
+                    if win {
+                        let info = &*(lp.0 as *const MSLLHOOKSTRUCT);
+                        if let Some(hwnd) = resolve_target(info.pt) {
+                            start_manual_move(hwnd, info.pt);
+                            return LRESULT(1);
+                        }
+                    }
+                }
+            }
+            WM_LBUTTONUP => {
+                if is_manual_drag() {
+                    let _ = KillTimer(HWND(std::ptr::null_mut()), TIMER_ID);
+                    if let Some(ds) = DRAG.with(|d| d.borrow_mut().take()) {
+                        end_drag(ds);
+                    }
+                    return LRESULT(1);
+                }
+            }
+            WM_RBUTTONDOWN | WM_RBUTTONUP => {
+                if is_manual_drag() {
+                    return LRESULT(1);
+                }
+            }
+            _ => {}
+        }
+    }
+    CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp)
 }

@@ -9,6 +9,7 @@ use crate::commands::cloak;
 pub trait WindowSystem {
     fn snap_window(&self, hwnd: HWND, rect: &Rect);
     fn restore_window_size(&self, hwnd: HWND, rect: &Rect);
+    fn translate_window(&self, hwnd: HWND, left: i32, top: i32, w: i32, h: i32);
     fn set_cloak(&self, hwnd: HWND, cloaked: bool);
     fn forget_cloak_view(&self, hwnd: HWND);
     fn enumerate_on_monitor(&self, hmon: HMONITOR) -> Vec<HWND>;
@@ -26,6 +27,10 @@ impl WindowSystem for Win32System {
 
     fn restore_window_size(&self, hwnd: HWND, rect: &Rect) {
         window::restore_size_from_rect(hwnd, rect);
+    }
+
+    fn translate_window(&self, hwnd: HWND, left: i32, top: i32, w: i32, h: i32) {
+        window::translate_window(hwnd, left, top, w, h);
     }
 
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {

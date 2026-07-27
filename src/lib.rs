@@ -184,6 +184,8 @@ pub fn run_wm() -> Result<(), &'static str> {
     assert!(!show_hook.0.is_null(),   "zonewm: failed to install WinEvent show hook");
     let kbd_hook       = hooks::install_kbd();
     assert!(!kbd_hook.0.is_null(),    "zonewm: failed to install keyboard hook");
+    let mouse_hook     = hooks::install_mouse();
+    assert!(!mouse_hook.0.is_null(),  "zonewm: failed to install mouse hook");
 
     let tray = SystemTray::new();
 
@@ -203,5 +205,6 @@ pub fn run_wm() -> Result<(), &'static str> {
     hooks::uninstall(destroy_hook);
     hooks::uninstall(show_hook);
     hooks::uninstall_kbd(kbd_hook);
+    hooks::uninstall_mouse(mouse_hook);
     Ok(())
 }

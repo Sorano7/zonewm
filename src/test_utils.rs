@@ -20,6 +20,7 @@ pub struct MockSystem {
     pub rects: HashMap<isize, Rect>,
     pub on_monitor: Vec<HWND>,
     pub snapped: RefCell<Vec<(isize, Rect)>>,
+    pub translated: RefCell<Vec<(isize, Rect)>>,
     pub cloaked: RefCell<HashMap<isize, bool>>,
     pub brought_to_front: RefCell<Vec<isize>>,
 }
@@ -43,6 +44,9 @@ impl WindowSystem for MockSystem {
         self.snapped.borrow_mut().push((hwnd.0 as isize, *rect));
     }
     fn restore_window_size(&self, _hwnd: HWND, _rect: &Rect) {}
+    fn translate_window(&self, hwnd: HWND, left: i32, top: i32, w: i32, h: i32) {
+        self.translated.borrow_mut().push((hwnd.0 as isize, Rect { left, top, right: left + w, bottom: top + h }));
+    }
     fn set_cloak(&self, hwnd: HWND, cloaked: bool) {
         self.cloaked.borrow_mut().insert(hwnd.0 as isize, cloaked);
     }
