@@ -164,35 +164,35 @@ action = "swap_window_right"
 [[keymap]]
 combo = "alt+n"
 action = "cycle_window_next"
-[[keymap]]
-combo = "alt+p"
-action = "cycle_window_prev"
+# [[keymap]]
+# combo = "alt+p"
+# action = "cycle_window_prev"
 
 # ---Keymaps: Stretch/Shrink---
 [[keymap]]
-combo = "alt+shift+u"
+combo = "alt+u"
 action = "stretch_window_left"
 [[keymap]]
-combo = "alt+shift+i"
+combo = "alt+i"
 action = "stretch_window_down"
 [[keymap]]
-combo = "alt+shift+o"
+combo = "alt+o"
 action = "stretch_window_up"
 [[keymap]]
-combo = "alt+shift+p"
+combo = "alt+p"
 action = "stretch_window_right"
 
 [[keymap]]
-combo = "ctrl+alt+u"
+combo = "alt+shift+u"
 action = "shrink_window_left"
 [[keymap]]
-combo = "ctrl+alt+i"
+combo = "alt+shift+i"
 action = "shrink_window_down"
 [[keymap]]
-combo = "ctrl+alt+o"
+combo = "alt+shift+o"
 action = "shrink_window_up"
 [[keymap]]
-combo = "ctrl+alt+p"
+combo = "alt+shift+p"
 action = "shrink_window_right"
 
 # ---Keymaps: Extras---
