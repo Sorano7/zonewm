@@ -344,7 +344,7 @@ impl MonitorState {
                 for &hwnd in hwnds {
                     let key = hwnd.0 as isize;
 
-                    let fullscreen_rect = ws.fullscreen.filter(|&f| f == hwnd).map(|_| work_area);
+                    let fullscreen_rect = ws.fullscreen.filter(|&f| f == hwnd).map(|_| self.monitor.full_rect);
                     let visual_rect = self.get_visual_rect(hwnd, layout, i);
                     let zone_rect = Some(zone.to_rect(work_area));
                     let rect = fullscreen_rect.or_else(|| visual_rect).or_else(|| zone_rect)
@@ -542,6 +542,10 @@ impl MonitorState {
 
     pub fn is_stretched(&self, hwnd: HWND) -> bool {
         self.visual_span.keys().any(|&k| k == hwnd.0 as isize)
+    }
+
+    pub fn is_fullscreen(&self, hwnd: HWND) -> bool {
+        self.workspaces.iter().any(|ws| ws.fullscreen == Some(hwnd))
     }
 
     pub fn set_fullscreen(&mut self, hwnd: HWND, sys: &impl WindowSystem) {

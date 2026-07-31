@@ -67,12 +67,16 @@ pub fn set_all_window_styles(states: &mut StateMap, prev_focused: HWND) -> Optio
         return None;
     };
 
-    let bgr = match () {
-        _ if ms.is_floating(focused)  => COLORREF(0x67B051),
-        _ if ms.is_stretched(focused) => COLORREF(0x58C5ED),
-        _                             => COLORREF(0x00FFA269),
-    };
-    set_window_border(focused, bgr);
+    if ms.is_fullscreen(focused) {
+        clear_window_border(focused);
+    } else {
+        let bgr = match () {
+            _ if ms.is_floating(focused)  => COLORREF(0x67B051),
+            _ if ms.is_stretched(focused) => COLORREF(0x58C5ED),
+            _                             => COLORREF(0x00FFA269),
+        };
+        set_window_border(focused, bgr);
+    }
 
     if prev_focused != focused {
         clear_window_border(prev_focused);

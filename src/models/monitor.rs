@@ -44,6 +44,7 @@ impl From<RECT> for Rect {
 pub struct Monitor {
     pub handle: HMONITOR,
     pub work_area: Rect,
+    pub full_rect: Rect,
     #[allow(unused)]
     pub device_name: String,
     pub device_id: String,
@@ -73,6 +74,7 @@ unsafe extern "system" fn monitor_enum_proc(
         monitors.push(Monitor {
             handle: hmonitor,
             work_area: info.monitorInfo.rcWork.into(),
+            full_rect: info.monitorInfo.rcMonitor.into(),
             device_name,
             device_id,
         });

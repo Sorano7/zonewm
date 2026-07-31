@@ -73,6 +73,7 @@ pub fn make_monitor() -> Monitor {
     Monitor {
         handle: hmon(1),
         work_area: work_area(),
+        full_rect: work_area(),
         device_name: r"\\.\DISPLAY1".into(),
         device_id: "test-monitor-1".into(),
     }
