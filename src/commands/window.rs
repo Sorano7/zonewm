@@ -56,7 +56,7 @@ pub fn handle_focus_move(
     states: &StateMap,
 ) {
     let Some(focused_rect) = states.get(&mon_key)
-        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        .and_then(|ms| ms.get_visible_rect(focused)) else {
         return;
     };
 
@@ -82,7 +82,7 @@ pub fn handle_window_move(
     states: &mut StateMap,
 ) {
     let Some(focused_rect) = states.get(&mon_key)
-        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        .and_then(|ms| ms.get_visible_rect(focused)) else {
         return;
     };
 
@@ -122,7 +122,7 @@ pub fn handle_window_swap(
     let WindowState::Zoned(src_zone) = src_state else { return };
 
     let Some(focused_rect) = states.get(&mon_key)
-        .and_then(|ms| ms.get_zone_or_visible_rect(focused)) else {
+        .and_then(|ms| ms.get_visible_rect(focused)) else {
         return;
     };
 

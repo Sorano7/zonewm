@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
 
-use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, state::{window_state::{self, Direction, WindowState}, workspace::WORKSPACE_COUNT}};
+use crate::{commands::window::clear_window_border, models::{self, monitor::{Monitor, Rect}, system::WindowSystem, zone::{Layout, Reach, Zone}}, 
+    state::{window_state::{self, Direction, WindowState}, workspace::WORKSPACE_COUNT}};
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
@@ -119,6 +120,11 @@ impl MonitorState {
         layout.zones.iter().map(|z| z.to_rect(self.monitor.work_area)).collect()
     }
 
+    fn get_visual_rect(&self, hwnd: HWND, layout: &Layout, zone_idx: usize) -> Option<Rect> {
+        let key = hwnd.0 as isize;
+        self.visual_span.get(&key).map(|&r| layout.bounds_for_reach(zone_idx, r, self.monitor.work_area))
+    }
+
     pub fn zoned_focus_candidates(&self, sys: &impl WindowSystem) -> Vec<(HWND, Rect)> {
         let ws = &self.workspaces[self.active_ws];
         let Some(layout) = self.layouts.get(ws.layout_idx).and_then(|l| l.as_ref()) else {
@@ -127,7 +133,8 @@ impl MonitorState {
         layout.zones.iter().enumerate()
             .filter_map(|(idx, zone)| {
                 let hwnd = self.topmost_in_zone(idx, sys)?;
-                Some((hwnd, zone.to_rect(self.monitor.work_area)))
+                let visual_rect = self.get_visual_rect(hwnd, layout, idx);
+                Some((hwnd, visual_rect.unwrap_or_else(|| zone.to_rect(self.monitor.work_area))))
             })
             .collect()
     }
@@ -338,7 +345,7 @@ impl MonitorState {
                     let key = hwnd.0 as isize;
 
                     let fullscreen_rect = ws.fullscreen.filter(|&f| f == hwnd).map(|_| work_area);
-                    let visual_rect = self.visual_span.get(&key).map(|&r| layout.bounds_for_reach(i, r, work_area));
+                    let visual_rect = self.get_visual_rect(hwnd, layout, i);
                     let zone_rect = Some(zone.to_rect(work_area));
                     let rect = fullscreen_rect.or_else(|| visual_rect).or_else(|| zone_rect)
                         .expect("Zone rect must exist");
@@ -514,19 +521,19 @@ impl MonitorState {
         }
     }
 
-    pub fn get_zone_or_visible_rect(&self, hwnd: HWND) -> Option<Rect> {
+    pub fn get_visible_rect(&self, hwnd: HWND) -> Option<Rect> {
         let ws = &self.workspaces[self.active_ws];
+        let layout = self.layouts.get(ws.layout_idx).and_then(|l| l.as_ref());
+        let zone_idx = ws.zoned.iter().position(|z| z.contains(&hwnd));
 
-        let zone = ws.zoned.iter().position(|z| z.contains(&hwnd))
-            .and_then(|zi| {
-                self.layouts.get(ws.layout_idx)?
-                    .as_ref()?
-                    .zones
-                    .get(zi)
-            });
-
-        zone.map(|z| z.to_rect(self.monitor.work_area))
-            .or_else(|| models::window::visible_rect(hwnd))
+        layout.as_ref()
+            .zip(zone_idx)
+            .and_then(|(layout, idx)| {
+                let zone = layout.zones.get(idx)?;
+                self.get_visual_rect(hwnd, layout, idx)
+                    .or_else(|| Some(zone.to_rect(self.monitor.work_area)))
+            })
+        .or_else(|| models::window::visible_rect(hwnd))
     }
 
     pub fn is_floating(&self, hwnd: HWND) -> bool {
