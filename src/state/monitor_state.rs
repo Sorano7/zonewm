@@ -6,7 +6,7 @@ use crate::{commands::window::clear_window_border, models::{self, monitor::{Moni
 #[cfg(debug_assertions)]
 use crate::state::window_state::WindowRecord;
 use super::workspace::Workspace;
-use crate::models::zone::{MAX_POS_DELTA, MAX_SIZE_DELTA, AUTO_SNAP_THRESHOLD};
+use crate::config;
 
 pub struct MonitorState {
     pub monitor: Monitor,
@@ -408,11 +408,11 @@ impl MonitorState {
         let dh = (r.height() - zr.height()).abs();
         let score = dx + dy + dw + dh;
 
-        let within_tolerance = dx <= MAX_POS_DELTA
-            && dy <= MAX_POS_DELTA
-            && dw <= MAX_SIZE_DELTA
-            && dh <= MAX_SIZE_DELTA
-            && score <= AUTO_SNAP_THRESHOLD;
+        let within_tolerance = dx <= config::settings::max_pos_delta()
+            && dy <= config::settings::max_pos_delta()
+            && dw <= config::settings::max_size_delta()
+            && dh <= config::settings::max_size_delta()
+            && score <= config::settings::auto_snap_threshold();
 
         within_tolerance.then_some(score)
     }

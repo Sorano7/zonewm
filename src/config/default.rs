@@ -4,6 +4,7 @@ pub const DEFAULT_CONFIG: &str = r##"
 # ---Snapping---
 [snapping]
 gap = 2
+auto_snap_strength = 0.5
 
 # ---Border Colors---
 [colors]
