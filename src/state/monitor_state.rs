@@ -304,7 +304,9 @@ impl MonitorState {
     pub fn get_last_focused_window(&self, sys: &impl WindowSystem) -> Option<HWND> {
         let ws = &self.workspaces[self.active_ws];
 
-        let last_focused = ws.last_focused.window.filter(|&h| !sys.is_minimized(h));
+        let last_focused = ws.last_focused.window
+            .filter(|&h| !sys.is_minimized(h))
+            .filter(|&h| ws.all_windows().contains(&h));
 
         // first visible window in either last focused zone or first zone.
         let visible_last_zone = ws.last_focused.zone

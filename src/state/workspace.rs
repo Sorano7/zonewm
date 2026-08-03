@@ -42,6 +42,10 @@ impl Workspace {
             zone.retain(|&h| h != hwnd);
         }
         self.floating.retain(|&h| h != hwnd);
+        if self.last_focused.window == Some(hwnd) {
+            self.last_focused.window = None;
+            self.last_focused.zone = None;
+        }
     }
 
     pub fn get_zone_index(&self, hwnd: HWND) -> Option<usize> {
