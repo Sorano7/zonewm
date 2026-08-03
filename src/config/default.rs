@@ -1,6 +1,10 @@
 pub const DEFAULT_CONFIG: &str = r#"
 # ZoneWM Configuration
 
+# ---Snapping---
+[snapping]
+gap = 2
+
 # ---Layouts---
 
 [[layout]]

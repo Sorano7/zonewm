@@ -9,10 +9,12 @@ use thiserror::Error;
 use crate::config::default::DEFAULT_CONFIG;
 use crate::config::keymap::KeymapEntry;
 use crate::config::layout::LayoutEntry;
+use crate::config::settings::SnappingEntry;
 
 pub mod layout;
 pub mod keymap;
 pub mod default;
+pub mod settings;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -25,6 +27,8 @@ pub struct Config {
     #[serde(default)]
     layout: Option<Vec<LayoutEntry>>,
     keymap: Option<Vec<KeymapEntry>>,
+    #[serde(default)]
+    snapping: Option<SnappingEntry>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -47,16 +51,18 @@ pub fn state_path() -> PathBuf {
 }
 
 pub fn load(path: &Path) -> Config {
-    match fs::read_to_string(path) {
+    let cfg = match fs::read_to_string(path) {
         Ok(s) => toml::from_str(&s).unwrap_or_default(),
         Err(_) => {
             if let Some(dir) = path.parent() {
                 let _ = fs::create_dir_all(dir);
             }
-            let _ = fs::write(path, DEFAULT_CONFIG); 
+            let _ = fs::write(path, DEFAULT_CONFIG);
             toml::from_str(DEFAULT_CONFIG).unwrap_or_default()
         }
-    }
+    };
+    settings::update(&cfg);
+    cfg
 }
 
 pub fn mtime(path: &Path) -> Option<SystemTime> {

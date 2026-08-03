@@ -20,6 +20,8 @@ pub fn enable_ansi_console() {
 pub fn print_status(states: &StateMap, focused: HWND) {
     print!("\x1b[2J\x1b[H");
 
+    println!("Snap Gap: {}", config::settings::snap_gap());
+
     let mut monitors: Vec<&MonitorState> = states.values().collect();
     monitors.sort_by_key(|ms| (ms.monitor.work_area.left, ms.monitor.work_area.top));
 

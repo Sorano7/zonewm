@@ -42,7 +42,7 @@ pub const SNAP_GAP: i32 = 2;
 pub fn snap_to_rect(hwnd: HWND, zone: &Rect) {
     unsafe {
         let off = dwm_frame_offsets(hwnd);
-        let g = SNAP_GAP;
+        let g = crate::config::settings::snap_gap();
         let _ = SetWindowPos(
             hwnd,
             HWND(std::ptr::null_mut()),
