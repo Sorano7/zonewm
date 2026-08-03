@@ -441,6 +441,25 @@ impl MonitorState {
         true
     }
 
+    /// Discard all tracked state and re-capture windows as if freshly started.
+    pub fn reset(&mut self, sys: &impl WindowSystem) {
+        self.uncloak_all(sys);
+        self.clear_all_window_style();
+
+        let initial_idx = self.layouts.iter().position(|l| l.is_some()).unwrap_or(0);
+        let zone_count = self.layouts.get(initial_idx).and_then(|l| l.as_ref())
+            .map(|l| l.zones.len()).unwrap_or(0);
+        self.workspaces = (0..WORKSPACE_COUNT).map(|_| Workspace::new(zone_count)).collect();
+        for ws in &mut self.workspaces { ws.layout_idx = initial_idx; }
+        self.active_ws = 0;
+        self.hwnd_ws.clear();
+        self.snap_cache.clear();
+        self.pre_snap_rects.clear();
+        self.visual_span.clear();
+
+        self.capture_all_windows(sys);
+    }
+
     pub fn capture_all_windows(&mut self, sys: &impl WindowSystem) {
         let on_monitor = sys.enumerate_on_monitor(self.monitor.handle);
         let new_floating: Vec<HWND> = on_monitor

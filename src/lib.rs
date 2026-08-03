@@ -57,6 +57,12 @@ fn poll_monitors(states: &mut StateMap, cfg_path: &Path, saved: &config::SavedSt
     state::reconcile(states, monitors, cfg_path, saved, &Win32System);
 }
 
+fn refresh(states: &mut StateMap) {
+    for ms in states.values_mut() {
+        ms.reset(&Win32System);
+    }
+}
+
 fn on_hotkey(
     id: i32,
     states: &mut StateMap,
@@ -101,8 +107,12 @@ fn run(
                 hooks::tick();
                 flash.try_expire(msg.wParam.0);
 
-                if tray.quit_requested() {
+                let (quit_requested, refresh_requested) = tray.poll_events();
+                if quit_requested {
                     running.store(false, Ordering::SeqCst);
+                }
+                if refresh_requested {
+                    refresh(states);
                 }
                 if msg.wParam.0 == hot_reload_timer {
                     hot_reload(states, cfg_path, &mut cfg_mtime);
