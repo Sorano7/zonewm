@@ -1,9 +1,15 @@
-pub const DEFAULT_CONFIG: &str = r#"
+pub const DEFAULT_CONFIG: &str = r##"
 # ZoneWM Configuration
 
 # ---Snapping---
 [snapping]
 gap = 2
+
+# ---Border Colors---
+[colors]
+floating  = "#51B067"
+stretched = "#EDC558"
+zoned     = "#69A2FF"
 
 # ---Layouts---
 
@@ -215,4 +221,4 @@ action = "set_minimized"
 [[keymap]]
 combo = "ctrl+alt+shift+g"
 action = "toggle_monitor_lock"
-"#;
+"##;

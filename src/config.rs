@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::config::default::DEFAULT_CONFIG;
 use crate::config::keymap::KeymapEntry;
 use crate::config::layout::LayoutEntry;
-use crate::config::settings::SnappingEntry;
+use crate::config::settings::{ColorsEntry, SnappingEntry};
 
 pub mod layout;
 pub mod keymap;
@@ -29,6 +29,8 @@ pub struct Config {
     keymap: Option<Vec<KeymapEntry>>,
     #[serde(default)]
     snapping: Option<SnappingEntry>,
+    #[serde(default)]
+    colors: Option<ColorsEntry>,
 }
 
 #[derive(Serialize, Deserialize, Default)]

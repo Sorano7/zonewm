@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use windows::Win32::{Foundation::{COLORREF, HWND}, Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow}, UI::WindowsAndMessaging::GetForegroundWindow};
+use windows::Win32::{Foundation::HWND, Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow}, UI::WindowsAndMessaging::GetForegroundWindow};
 
 use crate::{
     commands::window::{clear_window_border, set_window_border}, config, models::{monitor::Monitor, system::WindowSystem, zone::Layout}, state::monitor_state::MonitorState,
@@ -71,9 +71,9 @@ pub fn set_all_window_styles(states: &mut StateMap, prev_focused: HWND) -> Optio
         clear_window_border(focused);
     } else {
         let bgr = match () {
-            _ if ms.is_floating(focused)  => COLORREF(0x67B051),
-            _ if ms.is_stretched(focused) => COLORREF(0x58C5ED),
-            _                             => COLORREF(0x00FFA269),
+            _ if ms.is_floating(focused)  => config::settings::color_floating(),
+            _ if ms.is_stretched(focused) => config::settings::color_stretched(),
+            _                             => config::settings::color_zoned(),
         };
         set_window_border(focused, bgr);
     }
