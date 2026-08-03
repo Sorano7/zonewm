@@ -40,8 +40,13 @@ fn hot_reload(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<Sys
     let new_mtime = config::mtime(cfg_path);
     if new_mtime != *cfg_mtime {
         *cfg_mtime = new_mtime;
+        let old_snap_gap = config::settings::snap_gap();
         let layouts = config::layout::to_layouts(&config::load(cfg_path));
+        let snap_gap_changed = config::settings::snap_gap() != old_snap_gap;
         for ms in states.values_mut() {
+            if snap_gap_changed {
+                ms.invalidate_snap_cache();
+            }
             ms.reload_layouts(layouts.clone(), &Win32System);
         }
     }

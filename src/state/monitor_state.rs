@@ -51,6 +51,10 @@ impl MonitorState {
         self.workspaces[0].layout_idx
     }
 
+    pub fn invalidate_snap_cache(&mut self) {
+        self.snap_cache.clear();
+    }
+
     pub fn reload_layouts(&mut self, layouts: Vec<Option<Layout>>, sys: &impl WindowSystem) {
         self.layouts = layouts;
         let fallback = self.layouts.iter().position(|l| l.is_some()).unwrap_or(0);
