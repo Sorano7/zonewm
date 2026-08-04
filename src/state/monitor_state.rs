@@ -460,6 +460,26 @@ impl MonitorState {
         self.capture_all_windows(sys);
     }
 
+    pub fn resume_reconcile(&mut self, sys: &impl WindowSystem) {
+        let tracked: Vec<HWND> = self.hwnd_ws.keys().map(|&k| HWND(k as *mut _)).collect();
+        for hwnd in tracked {
+            if sys.window_rect(hwnd).is_none() {
+                self.detach_window(hwnd);
+            }
+        }
+
+        for h in sys.enumerate_on_monitor(self.monitor.handle) {
+            let key = h.0 as isize;
+            if !self.hwnd_ws.contains_key(&key) {
+                self.hwnd_ws.insert(key, self.active_ws);
+                self.snap_cache.remove(&key);
+                self.workspaces[self.active_ws].floating.push(h);
+            }
+        }
+
+        self.reflow(sys);
+    }
+
     pub fn capture_all_windows(&mut self, sys: &impl WindowSystem) {
         let on_monitor = sys.enumerate_on_monitor(self.monitor.handle);
         let new_floating: Vec<HWND> = on_monitor
@@ -903,6 +923,66 @@ mod test {
         ms.shrink_window(h(1), Direction::Left, &sys);
 
         assert!(sys.snapped.borrow().is_empty());
+    }
+
+    #[test]
+    fn resume_reconcile_prunes_windows_that_no_longer_exist() {
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        let sys = MockSystem::default(); // h(1) has no rect => treated as closed
+        ms.resume_reconcile(&sys);
+        assert_eq!(ms.window_state(h(1)), WindowState::Ignored);
+    }
+
+    #[test]
+    fn resume_reconcile_demotes_drifted_zoned_window_to_floating() {
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        let seed_sys = MockSystem::default();
+        ms.reflow(&seed_sys); // seed snap_cache with zone 0's rect
+
+        let moved_rect = Rect { left: 500, top: 500, right: 700, bottom: 700 };
+        let sys = MockSystem::default().with_rect(h(1), moved_rect);
+        ms.resume_reconcile(&sys);
+
+        assert_eq!(ms.window_state(h(1)), WindowState::Floating);
+    }
+
+    #[test]
+    fn resume_reconcile_leaves_unmoved_zoned_window_zoned() {
+        let mut ms = make_state();
+        ms.assign_to_zone(0, h(1), Rect::default());
+        let seed_sys = MockSystem::default();
+        ms.reflow(&seed_sys); // seed snap_cache with zone 0's rect
+
+        let zone_rect = Rect { left: 0, top: 0, right: 960, bottom: 1080 };
+        let sys = MockSystem::default().with_rect(h(1), zone_rect);
+        ms.resume_reconcile(&sys);
+
+        assert_eq!(ms.window_state(h(1)), WindowState::Zoned(0));
+    }
+
+    #[test]
+    fn resume_reconcile_adopts_new_window_as_floating_without_auto_snap() {
+        let mut ms = make_state(); // two_col_layout: zone 0 exactly covers this rect
+        let zone_rect = Rect { left: 0, top: 0, right: 960, bottom: 1080 };
+        let sys = MockSystem {
+            on_monitor: vec![h(2)],
+            rects: HashMap::from([(2, zone_rect)]),
+            ..Default::default()
+        };
+        ms.resume_reconcile(&sys);
+        assert_eq!(ms.window_state(h(2)), WindowState::Floating);
+    }
+
+    #[test]
+    fn resume_reconcile_ignores_drift_on_non_active_workspace() {
+        let mut ms = make_state();
+        ms.assign_to_zone_ws(0, 1, h(1), Rect::default());
+        let sys = MockSystem::default().with_rect(h(1), Rect { left: 500, top: 500, right: 700, bottom: 700 });
+        ms.resume_reconcile(&sys);
+        // active_ws is 0, so workspace 1's zoned window is untouched.
+        assert_eq!(ms.find_workspace(h(1)), Some(1));
     }
 
     #[test]

@@ -46,7 +46,12 @@ thread_local! {
     static DRAG:           RefCell<Option<DragState>> = const { RefCell::new(None) };
     static MAIN_TID:       Cell<u32>                  = const { Cell::new(0) };
     static PENDING_FOCUS:  Cell<Option<HWND>>         = const { Cell::new(None) };
+    static PAUSED:         Cell<bool>                 = const { Cell::new(false) };
     pub static KEYMAP_REG: OnceLock<KeymapRegistry>   = const { OnceLock::new() };
+}
+
+pub fn set_paused(v: bool) {
+    PAUSED.with(|c| c.set(v));
 }
 
 pub struct StateGuard;
@@ -168,6 +173,9 @@ fn post_hotkey(id: i32) {
 }
 
 unsafe extern "system" fn kbd_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if PAUSED.with(|c| c.get()) {
+        return CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp);
+    }
     if code >= 0 && (wp.0 == WM_KEYDOWN as usize || wp.0 == WM_SYSKEYDOWN as usize) {
         let ctrl  = GetKeyState(VK_CONTROL.0 as i32) < 0;
         let shift = GetKeyState(VK_SHIFT.0 as i32)   < 0;
@@ -296,6 +304,8 @@ unsafe extern "system" fn win_event_proc(
     _event_thread: u32,
     _event_time: u32,
 ) {
+    if PAUSED.with(|c| c.get()) { return; }
+
     match event {
         EVENT_SYSTEM_FOREGROUND => {
             PENDING_FOCUS.with(|c| c.set(Some(hwnd)));
@@ -443,6 +453,9 @@ unsafe fn start_manual_move(hwnd: HWND, pt: POINT) {
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if PAUSED.with(|c| c.get()) {
+        return CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wp, lp);
+    }
     if code >= 0 {
         match wp.0 as u32 {
             WM_LBUTTONDOWN => {

@@ -63,6 +63,21 @@ fn refresh(states: &mut StateMap) {
     }
 }
 
+fn pause(states: &mut StateMap) {
+    for ms in states.values_mut() {
+        ms.clear_all_window_style();
+    }
+    hooks::set_paused(true);
+}
+
+fn resume(states: &mut StateMap, cfg_path: &Path, cfg_mtime: &mut Option<SystemTime>) {
+    for ms in states.values_mut() {
+        ms.resume_reconcile(&Win32System);
+    }
+    hot_reload(states, cfg_path, cfg_mtime);
+    hooks::set_paused(false);
+}
+
 fn on_hotkey(
     id: i32,
     states: &mut StateMap,
@@ -97,6 +112,7 @@ fn run(
     let mut flash = FlashOverlay::new();
     let mut msg = MSG::default();
     let mut prev_focused = HWND::default();
+    let mut paused = false;
 
     while running.load(Ordering::SeqCst) {
         let ret = unsafe { GetMessageW(&mut msg, NO_HWND, 0, 0) };
@@ -107,29 +123,40 @@ fn run(
                 hooks::tick();
                 flash.try_expire(msg.wParam.0);
 
-                let (quit_requested, refresh_requested) = tray.poll_events();
-                if quit_requested {
+                let events = tray.poll_events();
+                if events.quit {
                     running.store(false, Ordering::SeqCst);
                 }
-                if refresh_requested {
+                if events.refresh {
                     refresh(states);
                 }
-                if msg.wParam.0 == hot_reload_timer {
-                    hot_reload(states, cfg_path, &mut cfg_mtime);
+                if events.pause_toggled {
+                    paused = !paused;
+                    if paused {
+                        pause(states);
+                    } else {
+                        resume(states, cfg_path, &mut cfg_mtime);
+                    }
+                    tray.set_pause_checked(paused);
                 }
-                if msg.wParam.0 == monitor_poll_timer {
-                    poll_monitors(states, cfg_path, saved);
+
+                if !paused {
+                    if msg.wParam.0 == hot_reload_timer {
+                        hot_reload(states, cfg_path, &mut cfg_mtime);
+                    }
+                    if msg.wParam.0 == monitor_poll_timer {
+                        poll_monitors(states, cfg_path, saved);
+                    }
+                    if msg.wParam.0 == style_timer {
+                        if let Some(new_focused) = set_all_window_styles(states, prev_focused) {
+                            prev_focused = new_focused;
+                        }
+                    }
                 }
                 #[cfg(debug_assertions)]
                 if msg.wParam.0 == display_timer {
                     let focused = unsafe { GetForegroundWindow() };
                     debug::print_status(states, focused);
-                }
-                if msg.wParam.0 == style_timer {
-                    if let Some(new_focused) = set_all_window_styles(states, prev_focused) {
-                        prev_focused = new_focused;
-                    }
-
                 }
             }
             WM_HOTKEY => on_hotkey(msg.wParam.0 as i32, states, &mut flash),
